@@ -5,11 +5,37 @@ $GithubRepo   = "elron-mcp"
 $Branch       = "main"
 $GithubRaw    = "https://raw.githubusercontent.com/$GithubOrg/$GithubRepo/$Branch"
 $InstallDir   = "$env:USERPROFILE\.elron-mcp"
-$ClaudeConfig = "$env:APPDATA\Claude\claude_desktop_config.json"
+# Detect Claude Desktop config path
+$ClaudeConfig = $null
+
+# Check Microsoft Store version — wildcard so package hash doesn't matter
+$claudePkg = Get-ChildItem "$env:LOCALAPPDATA\Packages" -Directory -Filter "Claude_*" -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($claudePkg) {
+  $storeDir = "$($claudePkg.FullName)\LocalCache\Roaming\Claude"
+  New-Item -ItemType Directory -Force -Path $storeDir | Out-Null
+  $ClaudeConfig = "$storeDir\claude_desktop_config.json"
+}
+
+# Check direct installer version
+if (-not $ClaudeConfig) {
+  $standardDir = "$env:APPDATA\Claude"
+  if (Test-Path $standardDir) {
+    $ClaudeConfig = "$standardDir\claude_desktop_config.json"
+  }
+}
+
+# If still not found, error out
+if (-not $ClaudeConfig) {
+  Write-Host "Error: Could not find Claude Desktop installation." -ForegroundColor Red
+  Write-Host "Make sure Claude Desktop is installed and opened at least once."
+  Write-Host "Download from https://claude.ai/download"
+  exit 1
+}
 
 Write-Host ""
 Write-Host "=== Elron MCP Installer ===" -ForegroundColor Cyan
 Write-Host ""
+Write-Host "✓ Claude config: $ClaudeConfig"
 
 # ── Check Node.js ──────────────────────────────────────────────────────────────
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
