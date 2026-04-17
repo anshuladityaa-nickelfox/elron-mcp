@@ -215,13 +215,13 @@ const tools = [
   {
     name: "create_client",
     description: "Create a new client.",
-    inputSchema: { type: "object", required: ["business_unit_id", "client_name"], properties: {
-      business_unit_id:          { type: "string" },
-      client_name:               { type: "string" },
-      legal_name:                { type: "string" },
-      country:                   { type: "string" },
-      status:                    { type: "string" },
-      default_billing_currency:  { type: "string" },
+    inputSchema: { type: "object", required: ["business_unit_id","client_name"], properties: {
+      business_unit_id:         { type: "string" },
+      client_name:              { type: "string" },
+      legal_name:               { type: "string" },
+      country:                  { type: "string" },
+      status:                   { type: "string" },
+      default_billing_currency: { type: "string" },
     }},
     handler: async (a) => {
       const { client, ctx } = requireAuth()
@@ -278,7 +278,7 @@ const tools = [
     name: "list_invoices",
     description: "List invoices. Filter by status, client, or date range.",
     inputSchema: { type: "object", properties: {
-      status:    { type: "string", enum: ["unpaid","paid","partial","overdue","void"] },
+      status:    { type: "string", enum: ["unpaid","partially_paid","paid","voided"] },
       client_id: { type: "string" },
       from_date: { type: "string", description: "YYYY-MM-DD" },
       to_date:   { type: "string", description: "YYYY-MM-DD" },
@@ -309,7 +309,7 @@ const tools = [
       if (!can(ctx, "finance", "invoices", "view")) throw new Error("No permission to view invoices.")
       const { data, error } = await client.from("invoices")
         .select("id,invoice_number,due_date,currency,invoice_amount_fc,status,clients(client_name)")
-        .in("business_unit_id", ctx.businessUnitIds).in("status", ["unpaid","partial","overdue"]).order("due_date")
+        .in("business_unit_id", ctx.businessUnitIds).in("status", ["unpaid","partially_paid"]).order("due_date")
       if (error) throw new Error(error.message)
       return data
     },
@@ -318,16 +318,18 @@ const tools = [
   {
     name: "create_invoice",
     description: "Create a new invoice.",
-    inputSchema: { type: "object", required: ["business_unit_id","client_id","project_id","invoice_date","due_date","currency","invoice_amount_fc"], properties: {
-      business_unit_id:  { type: "string" },
-      client_id:         { type: "string" },
-      project_id:        { type: "string" },
-      invoice_date:      { type: "string", description: "YYYY-MM-DD" },
-      due_date:          { type: "string", description: "YYYY-MM-DD" },
-      currency:          { type: "string" },
-      invoice_amount_fc: { type: "number" },
-      exchange_rate:     { type: "number" },
-      remarks:           { type: "string" },
+    inputSchema: { type: "object", required: ["business_unit_id","client_id","project_id","invoice_number","invoice_date","due_date"], properties: {
+      business_unit_id:        { type: "string" },
+      client_id:               { type: "string" },
+      project_id:              { type: "string" },
+      invoice_number:          { type: "string" },
+      invoice_date:            { type: "string", description: "YYYY-MM-DD" },
+      due_date:                { type: "string", description: "YYYY-MM-DD" },
+      currency:                { type: "string" },
+      invoice_amount_fc:       { type: "number" },
+      exchange_rate:           { type: "number" },
+      proforma_invoice_number: { type: "string" },
+      remarks:                 { type: "string" },
     }},
     handler: async (a) => {
       const { client, ctx } = requireAuth()
@@ -349,8 +351,9 @@ const tools = [
       currency:          { type: "string" },
       invoice_amount_fc: { type: "number" },
       exchange_rate:     { type: "number" },
-      status:            { type: "string", enum: ["unpaid","paid","partial","overdue","void"] },
+      status:            { type: "string", enum: ["unpaid","partially_paid","paid","voided"] },
       remarks:           { type: "string" },
+      void_reason:       { type: "string" },
     }},
     handler: async (a) => {
       const { client, ctx } = requireAuth()
@@ -392,7 +395,7 @@ const tools = [
       const { client, ctx } = requireAuth()
       if (!can(ctx, "finance", "payments", "view")) throw new Error("No permission to view payments.")
       let q = client.from("payments")
-        .select("*, invoices(invoice_number, clients(client_name))")
+        .select("id,payment_date,amount_received_fc,bank_conversion_rate,currency_floating_rate,notes,invoice_id,finance_account_id,invoices(invoice_number,clients(client_name))")
         .in("business_unit_id", ctx.businessUnitIds).order("payment_date", { ascending: false }).limit(a.limit || 50)
       if (a.from_date) q = q.gte("payment_date", a.from_date)
       if (a.to_date)   q = q.lte("payment_date", a.to_date)
@@ -405,20 +408,22 @@ const tools = [
   {
     name: "create_payment",
     description: "Record a new payment against an invoice.",
-    inputSchema: { type: "object", required: ["business_unit_id","invoice_id","payment_date","amount_fc","currency"], properties: {
-      business_unit_id: { type: "string" },
-      invoice_id:       { type: "string" },
-      payment_date:     { type: "string", description: "YYYY-MM-DD" },
-      amount_fc:        { type: "number" },
-      currency:         { type: "string" },
-      exchange_rate:    { type: "number" },
-      remarks:          { type: "string" },
+    inputSchema: { type: "object", required: ["finance_account_id","invoice_id","payment_date"], properties: {
+      finance_account_id:    { type: "string" },
+      invoice_id:            { type: "string" },
+      payment_date:          { type: "string", description: "YYYY-MM-DD" },
+      business_unit_id:      { type: "string" },
+      amount_received_fc:    { type: "number" },
+      bank_conversion_rate:  { type: "number" },
+      bank_charges_fc:       { type: "number" },
+      bank_reference:        { type: "string" },
+      notes:                 { type: "string" },
     }},
     handler: async (a) => {
       const { client, ctx } = requireAuth()
       if (!can(ctx, "finance", "payments", "create")) throw new Error("No permission to create payments.")
-      if (!ctx.businessUnitIds.includes(a.business_unit_id)) throw new Error("No access to this business unit.")
-      const { data, error } = await client.from("payments").insert(a).select().single()
+      if (a.business_unit_id && !ctx.businessUnitIds.includes(a.business_unit_id)) throw new Error("No access to this business unit.")
+      const { data, error } = await client.from("payments").insert({ ...a, created_by: ctx.userId }).select().single()
       if (error) throw new Error(error.message)
       return data
     },
@@ -445,13 +450,16 @@ const tools = [
     name: "list_forecasts",
     description: "List revenue forecasts. Filter by status or date range.",
     inputSchema: { type: "object", properties: {
-      status: { type: "string" }, from_month: { type: "string" }, to_month: { type: "string" }, limit: { type: "number" },
+      status:     { type: "string", enum: ["draft","approved","converted","cancelled"] },
+      from_month: { type: "string" },
+      to_month:   { type: "string" },
+      limit:      { type: "number" },
     }},
     handler: async (a) => {
       const { client, ctx } = requireAuth()
       if (!can(ctx, "finance", "forecasts", "view")) throw new Error("No permission to view forecasts.")
       let q = client.from("forecasts")
-        .select("*, clients(client_name), projects(project_name)")
+        .select("id,forecast_month,forecast_amount_fc,currency,exchange_rate,status,clients(client_name),projects(project_name)")
         .in("business_unit_id", ctx.businessUnitIds).order("forecast_month", { ascending: false }).limit(a.limit || 50)
       if (a.status)     q = q.eq("status", a.status)
       if (a.from_month) q = q.gte("forecast_month", a.from_month)
@@ -465,21 +473,23 @@ const tools = [
   {
     name: "create_forecast",
     description: "Create a new revenue forecast.",
-    inputSchema: { type: "object", required: ["business_unit_id","client_id","forecast_month","currency","forecast_amount"], properties: {
-      business_unit_id: { type: "string" },
-      client_id:        { type: "string" },
-      project_id:       { type: "string" },
-      forecast_month:   { type: "string", description: "YYYY-MM-DD" },
-      currency:         { type: "string" },
-      forecast_amount:  { type: "number" },
-      status:           { type: "string" },
-      remarks:          { type: "string" },
+    inputSchema: { type: "object", required: ["business_unit_id","client_id","project_id","forecast_month"], properties: {
+      business_unit_id:  { type: "string" },
+      client_id:         { type: "string" },
+      project_id:        { type: "string" },
+      forecast_month:    { type: "string", description: "YYYY-MM-DD" },
+      forecast_amount_fc:{ type: "number" },
+      currency:          { type: "string" },
+      exchange_rate:     { type: "number" },
+      payment_terms:     { type: "number" },
+      status:            { type: "string", enum: ["draft","approved","converted","cancelled"] },
+      description:       { type: "string" },
     }},
     handler: async (a) => {
       const { client, ctx } = requireAuth()
       if (!can(ctx, "finance", "forecasts", "create")) throw new Error("No permission to create forecasts.")
       if (!ctx.businessUnitIds.includes(a.business_unit_id)) throw new Error("No access to this business unit.")
-      const { data, error } = await client.from("forecasts").insert(a).select().single()
+      const { data, error } = await client.from("forecasts").insert({ ...a, created_by: ctx.userId }).select().single()
       if (error) throw new Error(error.message)
       return data
     },
@@ -489,12 +499,15 @@ const tools = [
     name: "update_forecast",
     description: "Update an existing forecast.",
     inputSchema: { type: "object", required: ["forecast_id"], properties: {
-      forecast_id:     { type: "string" },
-      forecast_month:  { type: "string" },
-      currency:        { type: "string" },
-      forecast_amount: { type: "number" },
-      status:          { type: "string" },
-      remarks:         { type: "string" },
+      forecast_id:       { type: "string" },
+      forecast_month:    { type: "string" },
+      forecast_amount_fc:{ type: "number" },
+      currency:          { type: "string" },
+      exchange_rate:     { type: "number" },
+      payment_terms:     { type: "number" },
+      status:            { type: "string", enum: ["draft","approved","converted","cancelled"] },
+      description:       { type: "string" },
+      cancel_reason:     { type: "string" },
     }},
     handler: async (a) => {
       const { client, ctx } = requireAuth()
@@ -530,12 +543,16 @@ const tools = [
     name: "list_booked_expenses",
     description: "List booked expenses. Filter by category or date range.",
     inputSchema: { type: "object", properties: {
-      category: { type: "string" }, from_date: { type: "string" }, to_date: { type: "string" }, limit: { type: "number" },
+      category:  { type: "string" },
+      from_date: { type: "string" },
+      to_date:   { type: "string" },
+      limit:     { type: "number" },
     }},
     handler: async (a) => {
       const { client, ctx } = requireAuth()
       if (!can(ctx, "finance", "booked_expenses", "view")) throw new Error("No permission to view expenses.")
-      let q = client.from("booked_expenses").select("*")
+      let q = client.from("booked_expenses")
+        .select("id,category,payee,gross_amount,net_pay,booked_on_date,description,tax_applicable_percent,tax_deductible_percent")
         .in("business_unit_id", ctx.businessUnitIds).order("booked_on_date", { ascending: false }).limit(a.limit || 50)
       if (a.category)  q = q.eq("category", a.category)
       if (a.from_date) q = q.gte("booked_on_date", a.from_date)
@@ -549,19 +566,22 @@ const tools = [
   {
     name: "create_booked_expense",
     description: "Create a new booked expense.",
-    inputSchema: { type: "object", required: ["business_unit_id","category","amount","booked_on_date"], properties: {
-      business_unit_id: { type: "string" },
-      category:         { type: "string" },
-      amount:           { type: "number" },
-      currency:         { type: "string" },
-      booked_on_date:   { type: "string", description: "YYYY-MM-DD" },
-      description:      { type: "string" },
+    inputSchema: { type: "object", required: ["business_unit_id","category","booked_on_date","payee"], properties: {
+      business_unit_id:       { type: "string" },
+      category:               { type: "string" },
+      booked_on_date:         { type: "string", description: "YYYY-MM-DD" },
+      payee:                  { type: "string" },
+      gross_amount:           { type: "number" },
+      net_pay:                { type: "number" },
+      tax_applicable_percent: { type: "number" },
+      tax_deductible_percent: { type: "number" },
+      description:            { type: "string" },
     }},
     handler: async (a) => {
       const { client, ctx } = requireAuth()
       if (!can(ctx, "finance", "booked_expenses", "create")) throw new Error("No permission to create expenses.")
       if (!ctx.businessUnitIds.includes(a.business_unit_id)) throw new Error("No access to this business unit.")
-      const { data, error } = await client.from("booked_expenses").insert(a).select().single()
+      const { data, error } = await client.from("booked_expenses").insert({ ...a, created_by: ctx.userId }).select().single()
       if (error) throw new Error(error.message)
       return data
     },
@@ -571,12 +591,15 @@ const tools = [
     name: "update_booked_expense",
     description: "Update an existing booked expense.",
     inputSchema: { type: "object", required: ["expense_id"], properties: {
-      expense_id:     { type: "string" },
-      category:       { type: "string" },
-      amount:         { type: "number" },
-      currency:       { type: "string" },
-      booked_on_date: { type: "string" },
-      description:    { type: "string" },
+      expense_id:             { type: "string" },
+      category:               { type: "string" },
+      payee:                  { type: "string" },
+      gross_amount:           { type: "number" },
+      net_pay:                { type: "number" },
+      booked_on_date:         { type: "string" },
+      tax_applicable_percent: { type: "number" },
+      tax_deductible_percent: { type: "number" },
+      description:            { type: "string" },
     }},
     handler: async (a) => {
       const { client, ctx } = requireAuth()
@@ -616,7 +639,7 @@ const tools = [
       const { client, ctx } = requireAuth()
       if (!can(ctx, "finance", "finance_accounts", "view")) throw new Error("No permission to view finance accounts.")
       const { data, error } = await client.from("finance_accounts")
-        .select("id,account_name,account_type,bank_name,current_balance,currency,status")
+        .select("id,account_name,account_number,account_type,bank_name,currency,current_balance,balance_as_on_date,interest_rate,status,is_default")
         .in("business_unit_id", ctx.businessUnitIds).order("account_name")
       if (error) throw new Error(error.message)
       return data
@@ -626,19 +649,25 @@ const tools = [
   {
     name: "create_finance_account",
     description: "Create a new finance/bank account.",
-    inputSchema: { type: "object", required: ["business_unit_id","account_name","account_type","currency"], properties: {
-      business_unit_id: { type: "string" },
-      account_name:     { type: "string" },
-      account_type:     { type: "string" },
-      bank_name:        { type: "string" },
-      currency:         { type: "string" },
-      current_balance:  { type: "number" },
+    inputSchema: { type: "object", required: ["business_unit_id","account_name"], properties: {
+      business_unit_id:   { type: "string" },
+      account_name:       { type: "string" },
+      account_type:       { type: "string" },
+      account_number:     { type: "string" },
+      bank_name:          { type: "string" },
+      currency:           { type: "string" },
+      current_balance:    { type: "number" },
+      balance_as_on_date: { type: "string", description: "YYYY-MM-DD" },
+      interest_rate:      { type: "number" },
+      maturity_date:      { type: "string", description: "YYYY-MM-DD" },
+      is_default:         { type: "boolean" },
+      notes:              { type: "string" },
     }},
     handler: async (a) => {
       const { client, ctx } = requireAuth()
       if (!can(ctx, "finance", "finance_accounts", "create")) throw new Error("No permission to create finance accounts.")
       if (!ctx.businessUnitIds.includes(a.business_unit_id)) throw new Error("No access to this business unit.")
-      const { data, error } = await client.from("finance_accounts").insert(a).select().single()
+      const { data, error } = await client.from("finance_accounts").insert({ ...a, created_by: ctx.userId }).select().single()
       if (error) throw new Error(error.message)
       return data
     },
@@ -648,11 +677,17 @@ const tools = [
     name: "update_finance_account",
     description: "Update an existing finance/bank account.",
     inputSchema: { type: "object", required: ["account_id"], properties: {
-      account_id:      { type: "string" },
-      account_name:    { type: "string" },
-      bank_name:       { type: "string" },
-      current_balance: { type: "number" },
-      status:          { type: "string" },
+      account_id:         { type: "string" },
+      account_name:       { type: "string" },
+      account_number:     { type: "string" },
+      bank_name:          { type: "string" },
+      current_balance:    { type: "number" },
+      balance_as_on_date: { type: "string" },
+      interest_rate:      { type: "number" },
+      maturity_date:      { type: "string" },
+      status:             { type: "string" },
+      is_default:         { type: "boolean" },
+      notes:              { type: "string" },
     }},
     handler: async (a) => {
       const { client, ctx } = requireAuth()
@@ -672,13 +707,16 @@ const tools = [
     name: "list_leads",
     description: "List CRM leads. Filter by stage, priority, or search by company name.",
     inputSchema: { type: "object", properties: {
-      stage: { type: "string" }, priority: { type: "string" }, search: { type: "string" }, limit: { type: "number" },
+      stage:    { type: "string" },
+      priority: { type: "string" },
+      search:   { type: "string" },
+      limit:    { type: "number" },
     }},
     handler: async (a) => {
       const { client, ctx } = requireAuth()
       if (!can(ctx, "crm", "leads", "view")) throw new Error("No permission to view leads.")
       let q = client.from("leads")
-        .select("id,company_name,contact_name,stage,priority,deal_value,deal_currency,expected_close_date")
+        .select("id,company_name,contact_name,contact_email,contact_phone,stage,priority,deal_value,deal_currency,expected_close_date,probability,source,assigned_to,pipeline_id")
         .in("business_unit_id", ctx.businessUnitIds).order("created_at", { ascending: false }).limit(a.limit || 50)
       if (a.stage)    q = q.eq("stage", a.stage)
       if (a.priority) q = q.eq("priority", a.priority)
@@ -715,17 +753,25 @@ const tools = [
       business_unit_id:    { type: "string" },
       company_name:        { type: "string" },
       contact_name:        { type: "string" },
+      contact_email:       { type: "string" },
+      contact_phone:       { type: "string" },
       stage:               { type: "string" },
       priority:            { type: "string" },
       deal_value:          { type: "number" },
       deal_currency:       { type: "string" },
       expected_close_date: { type: "string", description: "YYYY-MM-DD" },
+      pipeline_id:         { type: "string" },
+      probability:         { type: "number" },
+      source:              { type: "string" },
+      assigned_to:         { type: "string" },
+      notes:               { type: "string" },
+      country_code:        { type: "string" },
     }},
     handler: async (a) => {
       const { client, ctx } = requireAuth()
       if (!can(ctx, "crm", "leads", "create")) throw new Error("No permission to create leads.")
       if (!ctx.businessUnitIds.includes(a.business_unit_id)) throw new Error("No access to this business unit.")
-      const { data, error } = await client.from("leads").insert(a).select().single()
+      const { data, error } = await client.from("leads").insert({ ...a, created_by: ctx.userId }).select().single()
       if (error) throw new Error(error.message)
       return data
     },
@@ -738,11 +784,19 @@ const tools = [
       lead_id:             { type: "string" },
       company_name:        { type: "string" },
       contact_name:        { type: "string" },
+      contact_email:       { type: "string" },
+      contact_phone:       { type: "string" },
       stage:               { type: "string" },
       priority:            { type: "string" },
       deal_value:          { type: "number" },
       deal_currency:       { type: "string" },
       expected_close_date: { type: "string", description: "YYYY-MM-DD" },
+      pipeline_id:         { type: "string" },
+      probability:         { type: "number" },
+      source:              { type: "string" },
+      assigned_to:         { type: "string" },
+      lost_reason:         { type: "string" },
+      notes:               { type: "string" },
     }},
     handler: async (a) => {
       const { client, ctx } = requireAuth()
@@ -773,18 +827,200 @@ const tools = [
     },
   },
 
+  // ── CRM Activities ────────────────────────────────────────────────────────────
+  {
+    name: "list_crm_activities",
+    description: "List CRM activities. Filter by type, lead, client, or completion status.",
+    inputSchema: { type: "object", properties: {
+      lead_id:       { type: "string" },
+      client_id:     { type: "string" },
+      activity_type: { type: "string", enum: ["call","email","meeting","note","task"] },
+      is_completed:  { type: "boolean" },
+      limit:         { type: "number" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "crm", "crm_activities", "view")) throw new Error("No permission to view CRM activities.")
+      let q = client.from("crm_activities")
+        .select("id,title,activity_type,activity_date,due_date,is_completed,completed_at,description,lead_id,client_id")
+        .in("business_unit_id", ctx.businessUnitIds).order("activity_date", { ascending: false }).limit(a.limit || 50)
+      if (a.lead_id)       q = q.eq("lead_id", a.lead_id)
+      if (a.client_id)     q = q.eq("client_id", a.client_id)
+      if (a.activity_type) q = q.eq("activity_type", a.activity_type)
+      if (a.is_completed !== undefined) q = q.eq("is_completed", a.is_completed)
+      const { data, error } = await q
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
+  {
+    name: "create_crm_activity",
+    description: "Create a new CRM activity (call, email, meeting, note, or task).",
+    inputSchema: { type: "object", required: ["business_unit_id","title","activity_type"], properties: {
+      business_unit_id: { type: "string" },
+      title:            { type: "string" },
+      activity_type:    { type: "string", enum: ["call","email","meeting","note","task"] },
+      activity_date:    { type: "string", description: "YYYY-MM-DD" },
+      description:      { type: "string" },
+      due_date:         { type: "string", description: "YYYY-MM-DD" },
+      lead_id:          { type: "string" },
+      client_id:        { type: "string" },
+      is_completed:     { type: "boolean" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "crm", "crm_activities", "create")) throw new Error("No permission to create CRM activities.")
+      if (!ctx.businessUnitIds.includes(a.business_unit_id)) throw new Error("No access to this business unit.")
+      const { data, error } = await client.from("crm_activities").insert({ ...a, created_by: ctx.userId }).select().single()
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
+  {
+    name: "update_crm_activity",
+    description: "Update an existing CRM activity.",
+    inputSchema: { type: "object", required: ["activity_id"], properties: {
+      activity_id:   { type: "string" },
+      title:         { type: "string" },
+      activity_type: { type: "string", enum: ["call","email","meeting","note","task"] },
+      activity_date: { type: "string" },
+      description:   { type: "string" },
+      due_date:      { type: "string" },
+      is_completed:  { type: "boolean" },
+      completed_at:  { type: "string" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "crm", "crm_activities", "update")) throw new Error("No permission to update CRM activities.")
+      const { activity_id, ...fields } = a
+      const updates = defined(fields)
+      if (!Object.keys(updates).length) throw new Error("No fields provided to update.")
+      const { data, error } = await client.from("crm_activities")
+        .update(updates).eq("id", activity_id).in("business_unit_id", ctx.businessUnitIds).select().single()
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
+  {
+    name: "delete_crm_activity",
+    description: "Delete a CRM activity by ID.",
+    inputSchema: { type: "object", required: ["activity_id"], properties: {
+      activity_id: { type: "string" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "crm", "crm_activities", "delete")) throw new Error("No permission to delete CRM activities.")
+      const { error } = await client.from("crm_activities")
+        .delete().eq("id", a.activity_id).in("business_unit_id", ctx.businessUnitIds)
+      if (error) throw new Error(error.message)
+      return { message: `Activity ${a.activity_id} deleted.` }
+    },
+  },
+
+  // ── Lead Tasks ────────────────────────────────────────────────────────────────
+  {
+    name: "list_lead_tasks",
+    description: "List tasks for a lead. Filter by completion status or assigned user.",
+    inputSchema: { type: "object", properties: {
+      lead_id:      { type: "string" },
+      is_completed: { type: "boolean" },
+      assigned_to:  { type: "string" },
+      limit:        { type: "number" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "crm", "lead_tasks", "view")) throw new Error("No permission to view lead tasks.")
+      let q = client.from("lead_tasks")
+        .select("id,title,description,lead_id,assigned_to,is_completed,completed_at,reminder_at,created_at")
+        .in("business_unit_id", ctx.businessUnitIds).order("created_at", { ascending: false }).limit(a.limit || 50)
+      if (a.lead_id)     q = q.eq("lead_id", a.lead_id)
+      if (a.assigned_to) q = q.eq("assigned_to", a.assigned_to)
+      if (a.is_completed !== undefined) q = q.eq("is_completed", a.is_completed)
+      const { data, error } = await q
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
+  {
+    name: "create_lead_task",
+    description: "Create a new task for a lead.",
+    inputSchema: { type: "object", required: ["business_unit_id","lead_id","title"], properties: {
+      business_unit_id: { type: "string" },
+      lead_id:          { type: "string" },
+      title:            { type: "string" },
+      description:      { type: "string" },
+      assigned_to:      { type: "string" },
+      reminder_at:      { type: "string", description: "ISO timestamp" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "crm", "lead_tasks", "create")) throw new Error("No permission to create lead tasks.")
+      if (!ctx.businessUnitIds.includes(a.business_unit_id)) throw new Error("No access to this business unit.")
+      const { data, error } = await client.from("lead_tasks").insert({ ...a, created_by: ctx.userId }).select().single()
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
+  {
+    name: "update_lead_task",
+    description: "Update an existing lead task.",
+    inputSchema: { type: "object", required: ["task_id"], properties: {
+      task_id:      { type: "string" },
+      title:        { type: "string" },
+      description:  { type: "string" },
+      assigned_to:  { type: "string" },
+      is_completed: { type: "boolean" },
+      completed_at: { type: "string" },
+      reminder_at:  { type: "string" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "crm", "lead_tasks", "update")) throw new Error("No permission to update lead tasks.")
+      const { task_id, ...fields } = a
+      const updates = defined(fields)
+      if (!Object.keys(updates).length) throw new Error("No fields provided to update.")
+      const { data, error } = await client.from("lead_tasks")
+        .update(updates).eq("id", task_id).in("business_unit_id", ctx.businessUnitIds).select().single()
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
+  {
+    name: "delete_lead_task",
+    description: "Delete a lead task by ID.",
+    inputSchema: { type: "object", required: ["task_id"], properties: {
+      task_id: { type: "string" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "crm", "lead_tasks", "delete")) throw new Error("No permission to delete lead tasks.")
+      const { error } = await client.from("lead_tasks")
+        .delete().eq("id", a.task_id).in("business_unit_id", ctx.businessUnitIds)
+      if (error) throw new Error(error.message)
+      return { message: `Task ${a.task_id} deleted.` }
+    },
+  },
+
   // ── Projects ──────────────────────────────────────────────────────────────────
   {
     name: "list_projects",
     description: "List projects. Filter by status or client.",
     inputSchema: { type: "object", properties: {
-      status: { type: "string" }, client_id: { type: "string" }, limit: { type: "number" },
+      status:    { type: "string" },
+      client_id: { type: "string" },
+      limit:     { type: "number" },
     }},
     handler: async (a) => {
       const { client, ctx } = requireAuth()
       if (!can(ctx, "pm", "pm_projects", "view")) throw new Error("No permission to view projects.")
       let q = client.from("projects")
-        .select("id,project_name,status,engagement_type,clients(client_name)")
+        .select("id,project_name,status,engagement_type,description,clients(client_name)")
         .in("business_unit_id", ctx.businessUnitIds).limit(a.limit || 50)
       if (a.status)    q = q.eq("status", a.status)
       if (a.client_id) q = q.eq("client_id", a.client_id)
@@ -802,13 +1038,14 @@ const tools = [
       project_name:     { type: "string" },
       client_id:        { type: "string" },
       status:           { type: "string" },
-      engagement_type:  { type: "string" },
+      engagement_type:  { type: "string", enum: ["retainer","milestone","hourly","custom"] },
+      description:      { type: "string" },
     }},
     handler: async (a) => {
       const { client, ctx } = requireAuth()
       if (!can(ctx, "pm", "pm_projects", "create")) throw new Error("No permission to create projects.")
       if (!ctx.businessUnitIds.includes(a.business_unit_id)) throw new Error("No access to this business unit.")
-      const { data, error } = await client.from("projects").insert(a).select().single()
+      const { data, error } = await client.from("projects").insert({ ...a, created_by: ctx.userId }).select().single()
       if (error) throw new Error(error.message)
       return data
     },
@@ -821,7 +1058,8 @@ const tools = [
       project_id:      { type: "string" },
       project_name:    { type: "string" },
       status:          { type: "string" },
-      engagement_type: { type: "string" },
+      engagement_type: { type: "string", enum: ["retainer","milestone","hourly","custom"] },
+      description:     { type: "string" },
     }},
     handler: async (a) => {
       const { client, ctx } = requireAuth()
@@ -857,13 +1095,15 @@ const tools = [
     name: "list_team_members",
     description: "List team members. Filter by team or search by name.",
     inputSchema: { type: "object", properties: {
-      team_id: { type: "string" }, search: { type: "string" }, limit: { type: "number" },
+      team_id: { type: "string" },
+      search:  { type: "string" },
+      limit:   { type: "number" },
     }},
     handler: async (a) => {
       const { client, ctx } = requireAuth()
       if (!can(ctx, "hr", "hr_team_members", "view")) throw new Error("No permission to view team members.")
       let q = client.from("team_members")
-        .select("id,name,email,employee_id,date_of_joining,designations(title),teams(name)")
+        .select("id,name,email,phone,employee_id,date_of_joining,reporting_manager_id,designations(title),teams(name)")
         .in("business_unit_id", ctx.businessUnitIds).eq("is_archived", false).limit(a.limit || 100)
       if (a.team_id) q = q.eq("team_id", a.team_id)
       if (a.search)  q = q.or(`name.ilike.%${a.search}%,email.ilike.%${a.search}%`)
@@ -876,20 +1116,22 @@ const tools = [
   {
     name: "create_team_member",
     description: "Add a new team member.",
-    inputSchema: { type: "object", required: ["business_unit_id","name","email"], properties: {
-      business_unit_id: { type: "string" },
-      name:             { type: "string" },
-      email:            { type: "string" },
-      employee_id:      { type: "string" },
-      team_id:          { type: "string" },
-      designation_id:   { type: "string" },
-      date_of_joining:  { type: "string", description: "YYYY-MM-DD" },
+    inputSchema: { type: "object", required: ["business_unit_id","name","email","phone","employee_id","date_of_joining"], properties: {
+      business_unit_id:     { type: "string" },
+      name:                 { type: "string" },
+      email:                { type: "string" },
+      phone:                { type: "string" },
+      employee_id:          { type: "string" },
+      date_of_joining:      { type: "string", description: "YYYY-MM-DD" },
+      team_id:              { type: "string" },
+      designation_id:       { type: "string" },
+      reporting_manager_id: { type: "string" },
     }},
     handler: async (a) => {
       const { client, ctx } = requireAuth()
       if (!can(ctx, "hr", "hr_team_members", "create")) throw new Error("No permission to create team members.")
       if (!ctx.businessUnitIds.includes(a.business_unit_id)) throw new Error("No access to this business unit.")
-      const { data, error } = await client.from("team_members").insert(a).select().single()
+      const { data, error } = await client.from("team_members").insert({ ...a, created_by: ctx.userId }).select().single()
       if (error) throw new Error(error.message)
       return data
     },
@@ -899,14 +1141,16 @@ const tools = [
     name: "update_team_member",
     description: "Update an existing team member.",
     inputSchema: { type: "object", required: ["member_id"], properties: {
-      member_id:       { type: "string" },
-      name:            { type: "string" },
-      email:           { type: "string" },
-      employee_id:     { type: "string" },
-      team_id:         { type: "string" },
-      designation_id:  { type: "string" },
-      date_of_joining: { type: "string" },
-      is_archived:     { type: "boolean" },
+      member_id:            { type: "string" },
+      name:                 { type: "string" },
+      email:                { type: "string" },
+      phone:                { type: "string" },
+      employee_id:          { type: "string" },
+      date_of_joining:      { type: "string" },
+      team_id:              { type: "string" },
+      designation_id:       { type: "string" },
+      reporting_manager_id: { type: "string" },
+      is_archived:          { type: "boolean" },
     }},
     handler: async (a) => {
       const { client, ctx } = requireAuth()
@@ -942,13 +1186,16 @@ const tools = [
     name: "list_timesheets",
     description: "List timesheets. Filter by status or date range.",
     inputSchema: { type: "object", properties: {
-      status: { type: "string" }, from_date: { type: "string" }, to_date: { type: "string" }, limit: { type: "number" },
+      status:    { type: "string" },
+      from_date: { type: "string" },
+      to_date:   { type: "string" },
+      limit:     { type: "number" },
     }},
     handler: async (a) => {
       const { client, ctx } = requireAuth()
       if (!can(ctx, "pm", "pm_timesheets", "view")) throw new Error("No permission to view timesheets.")
       let q = client.from("timesheets")
-        .select("id,week_start_date,status,submitted_at,team_members(name,email)")
+        .select("id,week_start_date,status,submitted_at,notes,team_members(name,email)")
         .in("business_unit_id", ctx.businessUnitIds).order("week_start_date", { ascending: false }).limit(a.limit || 50)
       if (a.status)    q = q.eq("status", a.status)
       if (a.from_date) q = q.gte("week_start_date", a.from_date)
@@ -960,18 +1207,40 @@ const tools = [
   },
 
   {
+    name: "create_timesheet",
+    description: "Create a new timesheet for a team member.",
+    inputSchema: { type: "object", required: ["business_unit_id","team_member_id","week_start_date"], properties: {
+      business_unit_id: { type: "string" },
+      team_member_id:   { type: "string" },
+      week_start_date:  { type: "string", description: "YYYY-MM-DD (Monday)" },
+      notes:            { type: "string" },
+      status:           { type: "string" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "pm", "pm_timesheets", "create")) throw new Error("No permission to create timesheets.")
+      if (!ctx.businessUnitIds.includes(a.business_unit_id)) throw new Error("No access to this business unit.")
+      const { data, error } = await client.from("timesheets").insert(a).select().single()
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
+  {
     name: "update_timesheet",
     description: "Update a timesheet status (e.g. approve or reject).",
-    inputSchema: { type: "object", required: ["timesheet_id", "status"], properties: {
-      timesheet_id: { type: "string" },
-      status:       { type: "string", enum: ["draft","submitted","approved","rejected"] },
-      remarks:      { type: "string" },
+    inputSchema: { type: "object", required: ["timesheet_id"], properties: {
+      timesheet_id:     { type: "string" },
+      status:           { type: "string", enum: ["draft","submitted","approved","rejected"] },
+      notes:            { type: "string" },
+      rejection_reason: { type: "string" },
     }},
     handler: async (a) => {
       const { client, ctx } = requireAuth()
       if (!can(ctx, "pm", "pm_timesheets", "update")) throw new Error("No permission to update timesheets.")
       const { timesheet_id, ...fields } = a
       const updates = defined(fields)
+      if (!Object.keys(updates).length) throw new Error("No fields provided to update.")
       const { data, error } = await client.from("timesheets")
         .update(updates).eq("id", timesheet_id).in("business_unit_id", ctx.businessUnitIds).select().single()
       if (error) throw new Error(error.message)
