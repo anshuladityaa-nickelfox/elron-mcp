@@ -2212,6 +2212,77 @@ const tools = [
     },
   },
 
+  // ── Timesheet Settings ────────────────────────────────────────────────────────
+  {
+    name: "get_timesheet_settings",
+    description: "Get timesheet settings (approval mode) for the business unit.",
+    inputSchema: { type: "object", properties: {} },
+    handler: async () => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "pm", "pm_timesheet_settings", "view")) throw new Error("No permission to view timesheet settings.")
+      const { data, error } = await client.from("timesheet_settings")
+        .select("*").in("business_unit_id", ctx.businessUnitIds)
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
+  {
+    name: "update_timesheet_settings",
+    description: "Update timesheet settings. Provide approval_mode to change approval workflow.",
+    inputSchema: { type: "object", required: ["settings_id"], properties: {
+      settings_id:   { type: "string" },
+      approval_mode: { type: "string" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "pm", "pm_timesheet_settings", "update")) throw new Error("No permission to update timesheet settings.")
+      const { settings_id, ...fields } = a
+      const updates = defined(fields)
+      if (!Object.keys(updates).length) throw new Error("No fields provided to update.")
+      const { data, error } = await client.from("timesheet_settings")
+        .update(updates).eq("id", settings_id).in("business_unit_id", ctx.businessUnitIds).select().single()
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
+  // ── Client Tax Config (HR Config) ─────────────────────────────────────────────
+  {
+    name: "list_client_tax_config",
+    description: "List tax configuration for clients.",
+    inputSchema: { type: "object", properties: {
+      client_id: { type: "string" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "hr", "hr_config", "view")) throw new Error("No permission to view HR config.")
+      let q = client.from("client_tax_config").select("*, clients(client_name)")
+      if (a.client_id) q = q.eq("client_id", a.client_id)
+      const { data, error } = await q
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
+  {
+    name: "upsert_client_tax_config",
+    description: "Create or update tax config for a client.",
+    inputSchema: { type: "object", required: ["client_id"], properties: {
+      client_id:               { type: "string" },
+      tax_applicable_percent:  { type: "number" },
+      tax_deductible_percent:  { type: "number" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "hr", "hr_config", "create") && !can(ctx, "hr", "hr_config", "update")) throw new Error("No permission to update HR config.")
+      const { data, error } = await client.from("client_tax_config")
+        .upsert({ ...a, updated_by: ctx.userId }, { onConflict: "client_id" }).select().single()
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
   // ── PM Reports ────────────────────────────────────────────────────────────────
   {
     name: "get_pm_report",
