@@ -18,7 +18,34 @@ const SESSION_DIR  = join(homedir(), ".elron-mcp")
 const SESSION_FILE = join(SESSION_DIR, "session.json")
 
 // ── Shared auth state ─────────────────────────────────────────────────────────
-const state = { client: null, ctx: null }
+const state = { client: null, ctx: null, access_token: null, refresh_token: null }
+
+function tokenExpiry(token) {
+  try {
+    const payload = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString())
+    return payload.exp * 1000
+  } catch { return 0 }
+}
+
+async function refreshIfNeeded() {
+  if (!state.access_token || !state.refresh_token) return
+  if (Date.now() < tokenExpiry(state.access_token) - 60_000) return // still valid
+  try {
+    const { data, error } = await anonClient().auth.refreshSession({ refresh_token: state.refresh_token })
+    if (error || !data.session) return
+    const saved = loadSession()
+    saveSession({ ...saved, access_token: data.session.access_token, refresh_token: data.session.refresh_token, saved_at: new Date().toISOString() })
+    const uc  = userClient(data.session.access_token)
+    const ctx = await loadUserContext(uc)
+    state.client        = uc
+    state.ctx           = ctx
+    state.access_token  = data.session.access_token
+    state.refresh_token = data.session.refresh_token
+    process.stderr.write(`[elron-mcp] Token refreshed for ${ctx.email}\n`)
+  } catch (e) {
+    process.stderr.write(`[elron-mcp] Token refresh failed: ${e.message}\n`)
+  }
+}
 
 function requireAuth() {
   if (!state.client || !state.ctx)
@@ -144,8 +171,10 @@ const tools = [
       })
       const uc  = userClient(data.session.access_token)
       const ctx = await loadUserContext(uc)
-      state.client = uc
-      state.ctx    = ctx
+      state.client        = uc
+      state.ctx           = ctx
+      state.access_token  = data.session.access_token
+      state.refresh_token = data.session.refresh_token
       process.stderr.write(`[elron-mcp] Authenticated: ${ctx.email}\n`)
       return {
         message:            `Authenticated as ${ctx.email}. You can now use all data tools.`,
@@ -705,22 +734,26 @@ const tools = [
   // ── CRM Leads ─────────────────────────────────────────────────────────────────
   {
     name: "list_leads",
-    description: "List CRM leads. Filter by stage, priority, or search by company name.",
+    description: "List CRM leads. Filter by stage, priority, date range, or search by company/contact name.",
     inputSchema: { type: "object", properties: {
-      stage:    { type: "string" },
-      priority: { type: "string" },
-      search:   { type: "string" },
-      limit:    { type: "number" },
+      stage:     { type: "string" },
+      priority:  { type: "string" },
+      search:    { type: "string" },
+      from_date: { type: "string", description: "Filter leads created on or after this date (YYYY-MM-DD)" },
+      to_date:   { type: "string", description: "Filter leads created on or before this date (YYYY-MM-DD)" },
+      limit:     { type: "number" },
     }},
     handler: async (a) => {
       const { client, ctx } = requireAuth()
       if (!can(ctx, "crm", "leads", "view")) throw new Error("No permission to view leads.")
       let q = client.from("leads")
         .select("*, lead_custom_field_values(field_id, value_text, value_number, value_date, value_boolean, pipeline_custom_fields(name, field_type))")
-        .in("business_unit_id", ctx.businessUnitIds).order("created_at", { ascending: false }).limit(a.limit || 50)
-      if (a.stage)    q = q.eq("stage", a.stage)
-      if (a.priority) q = q.eq("priority", a.priority)
-      if (a.search)   q = q.or(`company_name.ilike.%${a.search}%,contact_name.ilike.%${a.search}%,contact_email.ilike.%${a.search}%`)
+        .in("business_unit_id", ctx.businessUnitIds).order("created_at", { ascending: false }).limit(a.limit || 500)
+      if (a.stage)     q = q.eq("stage", a.stage)
+      if (a.priority)  q = q.eq("priority", a.priority)
+      if (a.from_date) q = q.gte("created_at", a.from_date)
+      if (a.to_date)   q = q.lte("created_at", a.to_date + "T23:59:59.999Z")
+      if (a.search)    q = q.or(`company_name.ilike.%${a.search}%,contact_name.ilike.%${a.search}%,contact_email.ilike.%${a.search}%`)
       const { data, error } = await q
       if (error) throw new Error(error.message)
       return data.map(lead => {
@@ -2359,8 +2392,10 @@ async function main() {
         saveSession({ ...saved, access_token: data.session.access_token, refresh_token: data.session.refresh_token, saved_at: new Date().toISOString() })
         const uc  = userClient(data.session.access_token)
         const ctx = await loadUserContext(uc)
-        state.client = uc
-        state.ctx    = ctx
+        state.client        = uc
+        state.ctx           = ctx
+        state.access_token  = data.session.access_token
+        state.refresh_token = data.session.refresh_token
         process.stderr.write(`[elron-mcp] Session restored: ${ctx.email}\n`)
       } else {
         process.stderr.write("[elron-mcp] Session expired — authenticate via send_otp\n")
@@ -2371,6 +2406,9 @@ async function main() {
   } else {
     process.stderr.write("[elron-mcp] No session — authenticate via send_otp\n")
   }
+
+  // Refresh token every 20 minutes in the background so sleep/wake never expires the session
+  setInterval(() => { refreshIfNeeded().catch(() => {}) }, 20 * 60 * 1000)
 
   const rl = createInterface({ input: process.stdin })
 
