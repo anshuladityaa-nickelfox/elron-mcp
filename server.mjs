@@ -11,8 +11,8 @@ import { join } from "path"
 import { homedir } from "os"
 import { createInterface } from "readline"
 
-const SUPABASE_URL  = "https://xwtlxsrexibxsldaaugi.supabase.co"
-const SUPABASE_ANON = "sb_publishable_wGmyrKz2qD3VOl5UW7yP2A_r3TbvYrL"
+const SUPABASE_URL  = "https://vqbawakmcbnotxfltrws.supabase.co"
+const SUPABASE_ANON = "sb_publishable_FfAQQJezc2qaWAixOvtzvQ_ld3vU-7m"
 
 const SESSION_DIR  = join(homedir(), ".elron-mcp")
 const SESSION_FILE = join(SESSION_DIR, "session.json")
@@ -206,18 +206,24 @@ const tools = [
   // ── Clients ───────────────────────────────────────────────────────────────────
   {
     name: "list_clients",
-    description: "List clients. Filter by status or search by name.",
+    description: "List clients. Filter by status, date range, or search by name.",
     inputSchema: { type: "object", properties: {
-      status: { type: "string" }, search: { type: "string" }, limit: { type: "number" },
+      status:    { type: "string" },
+      search:    { type: "string" },
+      from_date: { type: "string", description: "YYYY-MM-DD" },
+      to_date:   { type: "string", description: "YYYY-MM-DD" },
+      limit:     { type: "number" },
     }},
     handler: async (a) => {
       const { client, ctx } = requireAuth()
       if (!can(ctx, "clients", "clients", "view")) throw new Error("No permission to view clients.")
       let q = client.from("clients")
         .select("*")
-        .in("business_unit_id", ctx.businessUnitIds).limit(a.limit || 50)
-      if (a.status) q = q.eq("status", a.status)
-      if (a.search) q = q.or(`client_name.ilike.%${a.search}%,legal_name.ilike.%${a.search}%`)
+        .in("business_unit_id", ctx.businessUnitIds).limit(a.from_date || a.to_date ? 10000 : a.limit || 50)
+      if (a.status)    q = q.eq("status", a.status)
+      if (a.from_date) q = q.gte("created_at", a.from_date + "T00:00:00.000+05:30")
+      if (a.to_date)   q = q.lte("created_at", a.to_date + "T23:59:59.999+05:30")
+      if (a.search)    q = q.or(`client_name.ilike.%${a.search}%,legal_name.ilike.%${a.search}%`)
       const { data, error } = await q
       if (error) throw new Error(error.message)
       return data
@@ -318,7 +324,7 @@ const tools = [
       if (!can(ctx, "finance", "invoices", "view")) throw new Error("No permission to view invoices.")
       let q = client.from("invoices")
         .select("*, clients(client_name)")
-        .in("business_unit_id", ctx.businessUnitIds).order("invoice_date", { ascending: false }).limit(a.limit || 50)
+        .in("business_unit_id", ctx.businessUnitIds).order("invoice_date", { ascending: false }).limit(a.from_date || a.to_date ? 10000 : a.limit || 50)
       if (a.status)    q = q.eq("status", a.status)
       if (a.client_id) q = q.eq("client_id", a.client_id)
       if (a.from_date) q = q.gte("invoice_date", a.from_date)
@@ -425,7 +431,7 @@ const tools = [
       if (!can(ctx, "finance", "payments", "view")) throw new Error("No permission to view payments.")
       let q = client.from("payments")
         .select("*, invoices(invoice_number,clients(client_name))")
-        .in("business_unit_id", ctx.businessUnitIds).order("payment_date", { ascending: false }).limit(a.limit || 50)
+        .in("business_unit_id", ctx.businessUnitIds).order("payment_date", { ascending: false }).limit(a.from_date || a.to_date ? 10000 : a.limit || 50)
       if (a.from_date) q = q.gte("payment_date", a.from_date)
       if (a.to_date)   q = q.lte("payment_date", a.to_date)
       const { data, error } = await q
@@ -489,7 +495,7 @@ const tools = [
       if (!can(ctx, "finance", "forecasts", "view")) throw new Error("No permission to view forecasts.")
       let q = client.from("forecasts")
         .select("*, clients(client_name), projects(project_name)")
-        .in("business_unit_id", ctx.businessUnitIds).order("forecast_month", { ascending: false }).limit(a.limit || 50)
+        .in("business_unit_id", ctx.businessUnitIds).order("forecast_month", { ascending: false }).limit(a.from_month || a.to_month ? 10000 : a.limit || 50)
       if (a.status)     q = q.eq("status", a.status)
       if (a.from_month) q = q.gte("forecast_month", a.from_month)
       if (a.to_month)   q = q.lte("forecast_month", a.to_month)
@@ -582,7 +588,7 @@ const tools = [
       if (!can(ctx, "finance", "booked_expenses", "view")) throw new Error("No permission to view expenses.")
       let q = client.from("booked_expenses")
         .select("*")
-        .in("business_unit_id", ctx.businessUnitIds).order("booked_on_date", { ascending: false }).limit(a.limit || 50)
+        .in("business_unit_id", ctx.businessUnitIds).order("booked_on_date", { ascending: false }).limit(a.from_date || a.to_date ? 10000 : a.limit || 50)
       if (a.category)  q = q.eq("category", a.category)
       if (a.from_date) q = q.gte("booked_on_date", a.from_date)
       if (a.to_date)   q = q.lte("booked_on_date", a.to_date)
@@ -751,8 +757,8 @@ const tools = [
         .in("business_unit_id", ctx.businessUnitIds).order("created_at", { ascending: false }).limit(a.limit || 500)
       if (a.stage)     q = q.eq("stage", a.stage)
       if (a.priority)  q = q.eq("priority", a.priority)
-      if (a.from_date) q = q.gte("created_at", a.from_date)
-      if (a.to_date)   q = q.lte("created_at", a.to_date + "T23:59:59.999Z")
+      if (a.from_date) q = q.gte("created_at", a.from_date + "T00:00:00.000+05:30")
+      if (a.to_date)   q = q.lte("created_at", a.to_date + "T23:59:59.999+05:30")
       if (a.search)    q = q.or(`company_name.ilike.%${a.search}%,contact_name.ilike.%${a.search}%,contact_email.ilike.%${a.search}%`)
       const { data, error } = await q
       if (error) throw new Error(error.message)
@@ -872,12 +878,14 @@ const tools = [
   // ── CRM Activities ────────────────────────────────────────────────────────────
   {
     name: "list_crm_activities",
-    description: "List CRM activities. Filter by type, lead, client, or completion status.",
+    description: "List CRM activities. Filter by type, lead, client, completion status, or date range.",
     inputSchema: { type: "object", properties: {
       lead_id:       { type: "string" },
       client_id:     { type: "string" },
       activity_type: { type: "string", enum: ["call","email","meeting","note","task"] },
       is_completed:  { type: "boolean" },
+      from_date:     { type: "string", description: "YYYY-MM-DD" },
+      to_date:       { type: "string", description: "YYYY-MM-DD" },
       limit:         { type: "number" },
     }},
     handler: async (a) => {
@@ -885,10 +893,12 @@ const tools = [
       if (!can(ctx, "crm", "crm_activities", "view")) throw new Error("No permission to view CRM activities.")
       let q = client.from("crm_activities")
         .select("*")
-        .in("business_unit_id", ctx.businessUnitIds).order("activity_date", { ascending: false }).limit(a.limit || 50)
+        .in("business_unit_id", ctx.businessUnitIds).order("activity_date", { ascending: false }).limit(a.from_date || a.to_date ? 10000 : a.limit || 50)
       if (a.lead_id)       q = q.eq("lead_id", a.lead_id)
       if (a.client_id)     q = q.eq("client_id", a.client_id)
       if (a.activity_type) q = q.eq("activity_type", a.activity_type)
+      if (a.from_date)     q = q.gte("activity_date", a.from_date + "T00:00:00.000+05:30")
+      if (a.to_date)       q = q.lte("activity_date", a.to_date + "T23:59:59.999+05:30")
       if (a.is_completed !== undefined) q = q.eq("is_completed", a.is_completed)
       const { data, error } = await q
       if (error) throw new Error(error.message)
@@ -965,11 +975,13 @@ const tools = [
   // ── Lead Tasks ────────────────────────────────────────────────────────────────
   {
     name: "list_lead_tasks",
-    description: "List tasks for a lead. Filter by completion status or assigned user.",
+    description: "List tasks for a lead. Filter by completion status, assigned user, or date range.",
     inputSchema: { type: "object", properties: {
       lead_id:      { type: "string" },
       is_completed: { type: "boolean" },
       assigned_to:  { type: "string" },
+      from_date:    { type: "string", description: "YYYY-MM-DD" },
+      to_date:      { type: "string", description: "YYYY-MM-DD" },
       limit:        { type: "number" },
     }},
     handler: async (a) => {
@@ -977,9 +989,11 @@ const tools = [
       if (!can(ctx, "crm", "lead_tasks", "view")) throw new Error("No permission to view lead tasks.")
       let q = client.from("lead_tasks")
         .select("*")
-        .in("business_unit_id", ctx.businessUnitIds).order("created_at", { ascending: false }).limit(a.limit || 50)
+        .in("business_unit_id", ctx.businessUnitIds).order("created_at", { ascending: false }).limit(a.from_date || a.to_date ? 10000 : a.limit || 50)
       if (a.lead_id)     q = q.eq("lead_id", a.lead_id)
       if (a.assigned_to) q = q.eq("assigned_to", a.assigned_to)
+      if (a.from_date)   q = q.gte("created_at", a.from_date + "T00:00:00.000+05:30")
+      if (a.to_date)     q = q.lte("created_at", a.to_date + "T23:59:59.999+05:30")
       if (a.is_completed !== undefined) q = q.eq("is_completed", a.is_completed)
       const { data, error } = await q
       if (error) throw new Error(error.message)
@@ -1238,7 +1252,7 @@ const tools = [
       if (!can(ctx, "pm", "pm_timesheets", "view")) throw new Error("No permission to view timesheets.")
       let q = client.from("timesheets")
         .select("*, team_members(name,email)")
-        .in("business_unit_id", ctx.businessUnitIds).order("week_start_date", { ascending: false }).limit(a.limit || 50)
+        .in("business_unit_id", ctx.businessUnitIds).order("week_start_date", { ascending: false }).limit(a.from_date || a.to_date ? 10000 : a.limit || 50)
       if (a.status)    q = q.eq("status", a.status)
       if (a.from_date) q = q.gte("week_start_date", a.from_date)
       if (a.to_date)   q = q.lte("week_start_date", a.to_date)
@@ -1293,10 +1307,12 @@ const tools = [
   // ── Timesheet Entries ─────────────────────────────────────────────────────────
   {
     name: "list_timesheet_entries",
-    description: "List timesheet entries. Filter by timesheet or project.",
+    description: "List timesheet entries. Filter by timesheet, project, or date range.",
     inputSchema: { type: "object", properties: {
       timesheet_id: { type: "string" },
       project_id:   { type: "string" },
+      from_date:    { type: "string", description: "YYYY-MM-DD" },
+      to_date:      { type: "string", description: "YYYY-MM-DD" },
       limit:        { type: "number" },
     }},
     handler: async (a) => {
@@ -1304,9 +1320,11 @@ const tools = [
       if (!can(ctx, "pm", "pm_timesheets", "view")) throw new Error("No permission to view timesheet entries.")
       let q = client.from("timesheet_entries")
         .select("*")
-        .in("business_unit_id", ctx.businessUnitIds).limit(a.limit || 100)
+        .in("business_unit_id", ctx.businessUnitIds).limit(a.from_date || a.to_date ? 10000 : a.limit || 100)
       if (a.timesheet_id) q = q.eq("timesheet_id", a.timesheet_id)
       if (a.project_id)   q = q.eq("project_id", a.project_id)
+      if (a.from_date)    q = q.gte("date", a.from_date)
+      if (a.to_date)      q = q.lte("date", a.to_date)
       const { data, error } = await q
       if (error) throw new Error(error.message)
       return data
@@ -1823,10 +1841,10 @@ const tools = [
       if (!can(ctx, "finance", "firc", "view")) throw new Error("No permission to view FIRC.")
       let q = client.from("firc")
         .select("*")
-        .in("business_unit_id", ctx.businessUnitIds).order("created_at", { ascending: false }).limit(a.limit || 50)
+        .in("business_unit_id", ctx.businessUnitIds).order("created_at", { ascending: false }).limit(a.from_date || a.to_date ? 10000 : a.limit || 50)
       if (a.client_id) q = q.eq("client_id", a.client_id)
-      if (a.from_date) q = q.gte("created_at", a.from_date)
-      if (a.to_date)   q = q.lte("created_at", a.to_date)
+      if (a.from_date) q = q.gte("created_at", a.from_date + "T00:00:00.000+05:30")
+      if (a.to_date)   q = q.lte("created_at", a.to_date + "T23:59:59.999+05:30")
       const { data, error } = await q
       if (error) throw new Error(error.message)
       return data
@@ -1913,7 +1931,7 @@ const tools = [
       if (!can(ctx, "finance", "expense_forecasts", "view")) throw new Error("No permission to view expense forecasts.")
       let q = client.from("expense_forecasts")
         .select("*")
-        .in("business_unit_id", ctx.businessUnitIds).order("forecast_month", { ascending: false }).limit(a.limit || 50)
+        .in("business_unit_id", ctx.businessUnitIds).order("forecast_month", { ascending: false }).limit(a.from_month || a.to_month ? 10000 : a.limit || 50)
       if (a.category)   q = q.eq("category", a.category)
       if (a.from_month) q = q.gte("forecast_month", a.from_month)
       if (a.to_month)   q = q.lte("forecast_month", a.to_month)
@@ -2001,7 +2019,7 @@ const tools = [
       if (!can(ctx, "finance", "actual_expenses", "view")) throw new Error("No permission to view actual expenses.")
       let q = client.from("actual_expenses")
         .select("*")
-        .in("business_unit_id", ctx.businessUnitIds).order("expense_date", { ascending: false }).limit(a.limit || 50)
+        .in("business_unit_id", ctx.businessUnitIds).order("expense_date", { ascending: false }).limit(a.from_date || a.to_date ? 10000 : a.limit || 50)
       if (a.category)  q = q.eq("category", a.category)
       if (a.from_date) q = q.gte("expense_date", a.from_date)
       if (a.to_date)   q = q.lte("expense_date", a.to_date)
@@ -2089,7 +2107,7 @@ const tools = [
       if (!can(ctx, "finance", "other_income", "view")) throw new Error("No permission to view other income.")
       let q = client.from("other_income")
         .select("*")
-        .in("business_unit_id", ctx.businessUnitIds).order("income_date", { ascending: false }).limit(a.limit || 50)
+        .in("business_unit_id", ctx.businessUnitIds).order("income_date", { ascending: false }).limit(a.from_date || a.to_date ? 10000 : a.limit || 50)
       if (a.category)  q = q.eq("category", a.category)
       if (a.from_date) q = q.gte("income_date", a.from_date)
       if (a.to_date)   q = q.lte("income_date", a.to_date)
@@ -2176,7 +2194,7 @@ const tools = [
       if (!can(ctx, "finance", "finance_transfers", "view")) throw new Error("No permission to view finance transfers.")
       let q = client.from("finance_transfers")
         .select("*")
-        .in("business_unit_id", ctx.businessUnitIds).order("transfer_date", { ascending: false }).limit(a.limit || 50)
+        .in("business_unit_id", ctx.businessUnitIds).order("transfer_date", { ascending: false }).limit(a.from_date || a.to_date ? 10000 : a.limit || 50)
       if (a.from_date) q = q.gte("transfer_date", a.from_date)
       if (a.to_date)   q = q.lte("transfer_date", a.to_date)
       const { data, error } = await q
@@ -2236,7 +2254,7 @@ const tools = [
       if (!can(ctx, "finance", "daily_summary", "view")) throw new Error("No permission to view daily summaries.")
       let q = client.from("daily_summaries")
         .select("*")
-        .in("business_unit_id", ctx.businessUnitIds).order("date", { ascending: false }).limit(a.limit || 50)
+        .in("business_unit_id", ctx.businessUnitIds).order("date", { ascending: false }).limit(a.from_date || a.to_date ? 10000 : a.limit || 50)
       if (a.from_date) q = q.gte("date", a.from_date)
       if (a.to_date)   q = q.lte("date", a.to_date)
       const { data, error } = await q
