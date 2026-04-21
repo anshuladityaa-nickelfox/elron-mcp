@@ -11,8 +11,8 @@ import { join } from "path"
 import { homedir } from "os"
 import { createInterface } from "readline"
 
-const SUPABASE_URL  = "https://xwtlxsrexibxsldaaugi.supabase.co"
-const SUPABASE_ANON = "sb_publishable_wGmyrKz2qD3VOl5UW7yP2A_r3TbvYrL"
+const SUPABASE_URL  = "https://vqbawakmcbnotxfltrws.supabase.co"
+const SUPABASE_ANON = "sb_publishable_FfAQQJezc2qaWAixOvtzvQ_ld3vU-7m"
 
 const SESSION_DIR  = join(homedir(), ".elron-mcp")
 const SESSION_FILE = join(SESSION_DIR, "session.json")
@@ -185,10 +185,10 @@ const tools = [
       const { client, ctx } = requireAuth()
       if (!can(ctx, "clients", "clients", "view")) throw new Error("No permission to view clients.")
       let q = client.from("clients")
-        .select("id,client_name,legal_name,country,status,default_billing_currency")
+        .select("*")
         .in("business_unit_id", ctx.businessUnitIds).limit(a.limit || 50)
       if (a.status) q = q.eq("status", a.status)
-      if (a.search) q = q.ilike("client_name", `%${a.search}%`)
+      if (a.search) q = q.or(`client_name.ilike.%${a.search}%,legal_name.ilike.%${a.search}%`)
       const { data, error } = await q
       if (error) throw new Error(error.message)
       return data
@@ -288,7 +288,7 @@ const tools = [
       const { client, ctx } = requireAuth()
       if (!can(ctx, "finance", "invoices", "view")) throw new Error("No permission to view invoices.")
       let q = client.from("invoices")
-        .select("id,invoice_number,invoice_date,due_date,currency,invoice_amount_fc,status,clients(client_name)")
+        .select("*, clients(client_name)")
         .in("business_unit_id", ctx.businessUnitIds).order("invoice_date", { ascending: false }).limit(a.limit || 50)
       if (a.status)    q = q.eq("status", a.status)
       if (a.client_id) q = q.eq("client_id", a.client_id)
@@ -308,7 +308,7 @@ const tools = [
       const { client, ctx } = requireAuth()
       if (!can(ctx, "finance", "invoices", "view")) throw new Error("No permission to view invoices.")
       const { data, error } = await client.from("invoices")
-        .select("id,invoice_number,due_date,currency,invoice_amount_fc,status,clients(client_name)")
+        .select("*, clients(client_name)")
         .in("business_unit_id", ctx.businessUnitIds).in("status", ["unpaid","partially_paid"]).order("due_date")
       if (error) throw new Error(error.message)
       return data
@@ -395,7 +395,7 @@ const tools = [
       const { client, ctx } = requireAuth()
       if (!can(ctx, "finance", "payments", "view")) throw new Error("No permission to view payments.")
       let q = client.from("payments")
-        .select("id,payment_date,amount_received_fc,bank_conversion_rate,currency_floating_rate,notes,invoice_id,finance_account_id,invoices(invoice_number,clients(client_name))")
+        .select("*, invoices(invoice_number,clients(client_name))")
         .in("business_unit_id", ctx.businessUnitIds).order("payment_date", { ascending: false }).limit(a.limit || 50)
       if (a.from_date) q = q.gte("payment_date", a.from_date)
       if (a.to_date)   q = q.lte("payment_date", a.to_date)
@@ -459,7 +459,7 @@ const tools = [
       const { client, ctx } = requireAuth()
       if (!can(ctx, "finance", "forecasts", "view")) throw new Error("No permission to view forecasts.")
       let q = client.from("forecasts")
-        .select("id,forecast_month,forecast_amount_fc,currency,exchange_rate,status,clients(client_name),projects(project_name)")
+        .select("*, clients(client_name), projects(project_name)")
         .in("business_unit_id", ctx.businessUnitIds).order("forecast_month", { ascending: false }).limit(a.limit || 50)
       if (a.status)     q = q.eq("status", a.status)
       if (a.from_month) q = q.gte("forecast_month", a.from_month)
@@ -552,7 +552,7 @@ const tools = [
       const { client, ctx } = requireAuth()
       if (!can(ctx, "finance", "booked_expenses", "view")) throw new Error("No permission to view expenses.")
       let q = client.from("booked_expenses")
-        .select("id,category,payee,gross_amount,net_pay,booked_on_date,description,tax_applicable_percent,tax_deductible_percent")
+        .select("*")
         .in("business_unit_id", ctx.businessUnitIds).order("booked_on_date", { ascending: false }).limit(a.limit || 50)
       if (a.category)  q = q.eq("category", a.category)
       if (a.from_date) q = q.gte("booked_on_date", a.from_date)
@@ -639,7 +639,7 @@ const tools = [
       const { client, ctx } = requireAuth()
       if (!can(ctx, "finance", "finance_accounts", "view")) throw new Error("No permission to view finance accounts.")
       const { data, error } = await client.from("finance_accounts")
-        .select("id,account_name,account_number,account_type,bank_name,currency,current_balance,balance_as_on_date,interest_rate,status,is_default")
+        .select("*")
         .in("business_unit_id", ctx.businessUnitIds).order("account_name")
       if (error) throw new Error(error.message)
       return data
@@ -716,11 +716,11 @@ const tools = [
       const { client, ctx } = requireAuth()
       if (!can(ctx, "crm", "leads", "view")) throw new Error("No permission to view leads.")
       let q = client.from("leads")
-        .select("id,company_name,contact_name,contact_email,contact_phone,stage,priority,deal_value,deal_currency,expected_close_date,probability,source,assigned_to,pipeline_id")
+        .select("*")
         .in("business_unit_id", ctx.businessUnitIds).order("created_at", { ascending: false }).limit(a.limit || 50)
       if (a.stage)    q = q.eq("stage", a.stage)
       if (a.priority) q = q.eq("priority", a.priority)
-      if (a.search)   q = q.ilike("company_name", `%${a.search}%`)
+      if (a.search)   q = q.or(`company_name.ilike.%${a.search}%,contact_name.ilike.%${a.search}%,contact_email.ilike.%${a.search}%`)
       const { data, error } = await q
       if (error) throw new Error(error.message)
       return data
@@ -842,7 +842,7 @@ const tools = [
       const { client, ctx } = requireAuth()
       if (!can(ctx, "crm", "crm_activities", "view")) throw new Error("No permission to view CRM activities.")
       let q = client.from("crm_activities")
-        .select("id,title,activity_type,activity_date,due_date,is_completed,completed_at,description,lead_id,client_id")
+        .select("*")
         .in("business_unit_id", ctx.businessUnitIds).order("activity_date", { ascending: false }).limit(a.limit || 50)
       if (a.lead_id)       q = q.eq("lead_id", a.lead_id)
       if (a.client_id)     q = q.eq("client_id", a.client_id)
@@ -934,7 +934,7 @@ const tools = [
       const { client, ctx } = requireAuth()
       if (!can(ctx, "crm", "lead_tasks", "view")) throw new Error("No permission to view lead tasks.")
       let q = client.from("lead_tasks")
-        .select("id,title,description,lead_id,assigned_to,is_completed,completed_at,reminder_at,created_at")
+        .select("*")
         .in("business_unit_id", ctx.businessUnitIds).order("created_at", { ascending: false }).limit(a.limit || 50)
       if (a.lead_id)     q = q.eq("lead_id", a.lead_id)
       if (a.assigned_to) q = q.eq("assigned_to", a.assigned_to)
@@ -1020,7 +1020,7 @@ const tools = [
       const { client, ctx } = requireAuth()
       if (!can(ctx, "pm", "pm_projects", "view")) throw new Error("No permission to view projects.")
       let q = client.from("projects")
-        .select("id,project_name,status,engagement_type,description,clients(client_name)")
+        .select("*, clients(client_name)")
         .in("business_unit_id", ctx.businessUnitIds).limit(a.limit || 50)
       if (a.status)    q = q.eq("status", a.status)
       if (a.client_id) q = q.eq("client_id", a.client_id)
@@ -1103,7 +1103,7 @@ const tools = [
       const { client, ctx } = requireAuth()
       if (!can(ctx, "hr", "hr_team_members", "view")) throw new Error("No permission to view team members.")
       let q = client.from("team_members")
-        .select("id,name,email,phone,employee_id,date_of_joining,reporting_manager_id,designations(title),teams(name)")
+        .select("*, designations(title), teams(name)")
         .in("business_unit_id", ctx.businessUnitIds).eq("is_archived", false).limit(a.limit || 100)
       if (a.team_id) q = q.eq("team_id", a.team_id)
       if (a.search)  q = q.or(`name.ilike.%${a.search}%,email.ilike.%${a.search}%`)
@@ -1195,7 +1195,7 @@ const tools = [
       const { client, ctx } = requireAuth()
       if (!can(ctx, "pm", "pm_timesheets", "view")) throw new Error("No permission to view timesheets.")
       let q = client.from("timesheets")
-        .select("id,week_start_date,status,submitted_at,notes,team_members(name,email)")
+        .select("*, team_members(name,email)")
         .in("business_unit_id", ctx.businessUnitIds).order("week_start_date", { ascending: false }).limit(a.limit || 50)
       if (a.status)    q = q.eq("status", a.status)
       if (a.from_date) q = q.gte("week_start_date", a.from_date)
@@ -1243,6 +1243,961 @@ const tools = [
       if (!Object.keys(updates).length) throw new Error("No fields provided to update.")
       const { data, error } = await client.from("timesheets")
         .update(updates).eq("id", timesheet_id).in("business_unit_id", ctx.businessUnitIds).select().single()
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
+  // ── Timesheet Entries ─────────────────────────────────────────────────────────
+  {
+    name: "list_timesheet_entries",
+    description: "List timesheet entries. Filter by timesheet or project.",
+    inputSchema: { type: "object", properties: {
+      timesheet_id: { type: "string" },
+      project_id:   { type: "string" },
+      limit:        { type: "number" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "pm", "pm_timesheets", "view")) throw new Error("No permission to view timesheet entries.")
+      let q = client.from("timesheet_entries")
+        .select("*")
+        .in("business_unit_id", ctx.businessUnitIds).limit(a.limit || 100)
+      if (a.timesheet_id) q = q.eq("timesheet_id", a.timesheet_id)
+      if (a.project_id)   q = q.eq("project_id", a.project_id)
+      const { data, error } = await q
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
+  {
+    name: "create_timesheet_entry",
+    description: "Add an entry to a timesheet.",
+    inputSchema: { type: "object", required: ["business_unit_id","timesheet_id","project_id","date","hours"], properties: {
+      business_unit_id: { type: "string" },
+      timesheet_id:     { type: "string" },
+      project_id:       { type: "string" },
+      task_id:          { type: "string" },
+      date:             { type: "string", description: "YYYY-MM-DD" },
+      hours:            { type: "number" },
+      description:      { type: "string" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "pm", "pm_timesheets", "create")) throw new Error("No permission to create timesheet entries.")
+      if (!ctx.businessUnitIds.includes(a.business_unit_id)) throw new Error("No access to this business unit.")
+      const { data, error } = await client.from("timesheet_entries").insert(a).select().single()
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
+  {
+    name: "update_timesheet_entry",
+    description: "Update a timesheet entry.",
+    inputSchema: { type: "object", required: ["entry_id"], properties: {
+      entry_id:    { type: "string" },
+      project_id:  { type: "string" },
+      task_id:     { type: "string" },
+      date:        { type: "string" },
+      hours:       { type: "number" },
+      description: { type: "string" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "pm", "pm_timesheets", "update")) throw new Error("No permission to update timesheet entries.")
+      const { entry_id, ...fields } = a
+      const updates = defined(fields)
+      if (!Object.keys(updates).length) throw new Error("No fields provided to update.")
+      const { data, error } = await client.from("timesheet_entries")
+        .update(updates).eq("id", entry_id).in("business_unit_id", ctx.businessUnitIds).select().single()
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
+  {
+    name: "delete_timesheet_entry",
+    description: "Delete a timesheet entry by ID.",
+    inputSchema: { type: "object", required: ["entry_id"], properties: {
+      entry_id: { type: "string" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "pm", "pm_timesheets", "delete")) throw new Error("No permission to delete timesheet entries.")
+      const { error } = await client.from("timesheet_entries")
+        .delete().eq("id", a.entry_id).in("business_unit_id", ctx.businessUnitIds)
+      if (error) throw new Error(error.message)
+      return { message: `Timesheet entry ${a.entry_id} deleted.` }
+    },
+  },
+
+  // ── Timesheet Approvals ───────────────────────────────────────────────────────
+  {
+    name: "list_timesheet_approvals",
+    description: "List timesheet project approvals. Filter by project or status.",
+    inputSchema: { type: "object", properties: {
+      project_id: { type: "string" },
+      status:     { type: "string" },
+      limit:      { type: "number" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "pm", "pm_timesheet_approvals", "view")) throw new Error("No permission to view timesheet approvals.")
+      let q = client.from("timesheet_project_approvals")
+        .select("*")
+        .in("business_unit_id", ctx.businessUnitIds).limit(a.limit || 50)
+      if (a.project_id) q = q.eq("project_id", a.project_id)
+      if (a.status)     q = q.eq("status", a.status)
+      const { data, error } = await q
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
+  {
+    name: "update_timesheet_approval",
+    description: "Approve or reject a timesheet project approval.",
+    inputSchema: { type: "object", required: ["approval_id","status"], properties: {
+      approval_id: { type: "string" },
+      status:      { type: "string", enum: ["approved","rejected","pending"] },
+      notes:       { type: "string" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "pm", "pm_timesheet_approvals", "update")) throw new Error("No permission to update timesheet approvals.")
+      const { approval_id, ...fields } = a
+      const updates = defined(fields)
+      const { data, error } = await client.from("timesheet_project_approvals")
+        .update(updates).eq("id", approval_id).in("business_unit_id", ctx.businessUnitIds).select().single()
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
+  // ── Teams ─────────────────────────────────────────────────────────────────────
+  {
+    name: "list_teams",
+    description: "List teams in the business unit.",
+    inputSchema: { type: "object", properties: {
+      search: { type: "string" },
+      limit:  { type: "number" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "pm", "pm_teams", "view") && !can(ctx, "hr", "hr_teams", "view"))
+        throw new Error("No permission to view teams.")
+      let q = client.from("teams")
+        .select("*")
+        .in("business_unit_id", ctx.businessUnitIds).limit(a.limit || 100)
+      if (a.search) q = q.ilike("name", `%${a.search}%`)
+      const { data, error } = await q
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
+  {
+    name: "create_team",
+    description: "Create a new team.",
+    inputSchema: { type: "object", required: ["business_unit_id","name"], properties: {
+      business_unit_id: { type: "string" },
+      name:             { type: "string" },
+      description:      { type: "string" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "pm", "pm_teams", "create") && !can(ctx, "hr", "hr_teams", "create"))
+        throw new Error("No permission to create teams.")
+      if (!ctx.businessUnitIds.includes(a.business_unit_id)) throw new Error("No access to this business unit.")
+      const { data, error } = await client.from("teams").insert({ ...a, created_by: ctx.userId }).select().single()
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
+  {
+    name: "update_team",
+    description: "Update an existing team.",
+    inputSchema: { type: "object", required: ["team_id"], properties: {
+      team_id:     { type: "string" },
+      name:        { type: "string" },
+      description: { type: "string" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "pm", "pm_teams", "update") && !can(ctx, "hr", "hr_teams", "update"))
+        throw new Error("No permission to update teams.")
+      const { team_id, ...fields } = a
+      const updates = defined(fields)
+      if (!Object.keys(updates).length) throw new Error("No fields provided to update.")
+      const { data, error } = await client.from("teams")
+        .update(updates).eq("id", team_id).in("business_unit_id", ctx.businessUnitIds).select().single()
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
+  {
+    name: "delete_team",
+    description: "Delete a team by ID.",
+    inputSchema: { type: "object", required: ["team_id"], properties: {
+      team_id: { type: "string" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "pm", "pm_teams", "delete") && !can(ctx, "hr", "hr_teams", "delete"))
+        throw new Error("No permission to delete teams.")
+      const { error } = await client.from("teams")
+        .delete().eq("id", a.team_id).in("business_unit_id", ctx.businessUnitIds)
+      if (error) throw new Error(error.message)
+      return { message: `Team ${a.team_id} deleted.` }
+    },
+  },
+
+  // ── Designations ──────────────────────────────────────────────────────────────
+  {
+    name: "list_designations",
+    description: "List designations/job titles in the business unit.",
+    inputSchema: { type: "object", properties: {
+      search: { type: "string" },
+      limit:  { type: "number" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "pm", "pm_designations", "view") && !can(ctx, "hr", "hr_designations", "view"))
+        throw new Error("No permission to view designations.")
+      let q = client.from("designations")
+        .select("*")
+        .in("business_unit_id", ctx.businessUnitIds).limit(a.limit || 100)
+      if (a.search) q = q.ilike("title", `%${a.search}%`)
+      const { data, error } = await q
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
+  {
+    name: "create_designation",
+    description: "Create a new designation/job title.",
+    inputSchema: { type: "object", required: ["business_unit_id","title"], properties: {
+      business_unit_id: { type: "string" },
+      title:            { type: "string" },
+      description:      { type: "string" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "pm", "pm_designations", "create") && !can(ctx, "hr", "hr_designations", "create"))
+        throw new Error("No permission to create designations.")
+      if (!ctx.businessUnitIds.includes(a.business_unit_id)) throw new Error("No access to this business unit.")
+      const { data, error } = await client.from("designations").insert({ ...a, created_by: ctx.userId }).select().single()
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
+  {
+    name: "update_designation",
+    description: "Update an existing designation.",
+    inputSchema: { type: "object", required: ["designation_id"], properties: {
+      designation_id: { type: "string" },
+      title:          { type: "string" },
+      description:    { type: "string" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "pm", "pm_designations", "update") && !can(ctx, "hr", "hr_designations", "update"))
+        throw new Error("No permission to update designations.")
+      const { designation_id, ...fields } = a
+      const updates = defined(fields)
+      if (!Object.keys(updates).length) throw new Error("No fields provided to update.")
+      const { data, error } = await client.from("designations")
+        .update(updates).eq("id", designation_id).in("business_unit_id", ctx.businessUnitIds).select().single()
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
+  {
+    name: "delete_designation",
+    description: "Delete a designation by ID.",
+    inputSchema: { type: "object", required: ["designation_id"], properties: {
+      designation_id: { type: "string" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "pm", "pm_designations", "delete") && !can(ctx, "hr", "hr_designations", "delete"))
+        throw new Error("No permission to delete designations.")
+      const { error } = await client.from("designations")
+        .delete().eq("id", a.designation_id).in("business_unit_id", ctx.businessUnitIds)
+      if (error) throw new Error(error.message)
+      return { message: `Designation ${a.designation_id} deleted.` }
+    },
+  },
+
+  // ── PM Holidays ───────────────────────────────────────────────────────────────
+  {
+    name: "list_pm_holidays",
+    description: "List public/company holidays.",
+    inputSchema: { type: "object", properties: {
+      year:  { type: "number" },
+      limit: { type: "number" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "pm", "pm_settings", "view")) throw new Error("No permission to view holidays.")
+      let q = client.from("pm_holidays")
+        .select("*")
+        .in("business_unit_id", ctx.businessUnitIds).order("date").limit(a.limit || 100)
+      if (a.year) q = q.gte("date", `${a.year}-01-01`).lte("date", `${a.year}-12-31`)
+      const { data, error } = await q
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
+  {
+    name: "create_pm_holiday",
+    description: "Create a new holiday entry.",
+    inputSchema: { type: "object", required: ["business_unit_id","date","name"], properties: {
+      business_unit_id: { type: "string" },
+      date:             { type: "string", description: "YYYY-MM-DD" },
+      name:             { type: "string" },
+      holiday_type:     { type: "string" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "pm", "pm_settings", "create")) throw new Error("No permission to create holidays.")
+      if (!ctx.businessUnitIds.includes(a.business_unit_id)) throw new Error("No access to this business unit.")
+      const { data, error } = await client.from("pm_holidays").insert(a).select().single()
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
+  {
+    name: "delete_pm_holiday",
+    description: "Delete a holiday entry by ID.",
+    inputSchema: { type: "object", required: ["holiday_id"], properties: {
+      holiday_id: { type: "string" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "pm", "pm_settings", "delete")) throw new Error("No permission to delete holidays.")
+      const { error } = await client.from("pm_holidays")
+        .delete().eq("id", a.holiday_id).in("business_unit_id", ctx.businessUnitIds)
+      if (error) throw new Error(error.message)
+      return { message: `Holiday ${a.holiday_id} deleted.` }
+    },
+  },
+
+  // ── Project Members & Allocations ─────────────────────────────────────────────
+  {
+    name: "list_project_members",
+    description: "List members assigned to a project.",
+    inputSchema: { type: "object", properties: {
+      project_id: { type: "string" },
+      limit:      { type: "number" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "pm", "pm_projects", "view")) throw new Error("No permission to view project members.")
+      let q = client.from("project_members")
+        .select("*")
+        .in("business_unit_id", ctx.businessUnitIds).limit(a.limit || 100)
+      if (a.project_id) q = q.eq("project_id", a.project_id)
+      const { data, error } = await q
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
+  {
+    name: "add_project_member",
+    description: "Add a team member to a project.",
+    inputSchema: { type: "object", required: ["business_unit_id","project_id","team_member_id"], properties: {
+      business_unit_id: { type: "string" },
+      project_id:       { type: "string" },
+      team_member_id:   { type: "string" },
+      role:             { type: "string" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "pm", "pm_projects", "create")) throw new Error("No permission to add project members.")
+      if (!ctx.businessUnitIds.includes(a.business_unit_id)) throw new Error("No access to this business unit.")
+      const { data, error } = await client.from("project_members").insert(a).select().single()
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
+  {
+    name: "remove_project_member",
+    description: "Remove a team member from a project.",
+    inputSchema: { type: "object", required: ["member_id"], properties: {
+      member_id: { type: "string" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "pm", "pm_projects", "delete")) throw new Error("No permission to remove project members.")
+      const { error } = await client.from("project_members")
+        .delete().eq("id", a.member_id).in("business_unit_id", ctx.businessUnitIds)
+      if (error) throw new Error(error.message)
+      return { message: `Project member ${a.member_id} removed.` }
+    },
+  },
+
+  {
+    name: "list_project_allocations",
+    description: "List project allocations. Filter by project or team member.",
+    inputSchema: { type: "object", properties: {
+      project_id:     { type: "string" },
+      team_member_id: { type: "string" },
+      limit:          { type: "number" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "pm", "pm_projects", "view")) throw new Error("No permission to view project allocations.")
+      let q = client.from("project_allocations")
+        .select("*")
+        .in("business_unit_id", ctx.businessUnitIds).limit(a.limit || 100)
+      if (a.project_id)     q = q.eq("project_id", a.project_id)
+      if (a.team_member_id) q = q.eq("team_member_id", a.team_member_id)
+      const { data, error } = await q
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
+  {
+    name: "create_project_allocation",
+    description: "Create a project allocation for a team member.",
+    inputSchema: { type: "object", required: ["business_unit_id","project_id","team_member_id"], properties: {
+      business_unit_id:       { type: "string" },
+      project_id:             { type: "string" },
+      team_member_id:         { type: "string" },
+      allocation_percentage:  { type: "number" },
+      start_date:             { type: "string", description: "YYYY-MM-DD" },
+      end_date:               { type: "string", description: "YYYY-MM-DD" },
+      notes:                  { type: "string" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "pm", "pm_projects", "create")) throw new Error("No permission to create project allocations.")
+      if (!ctx.businessUnitIds.includes(a.business_unit_id)) throw new Error("No access to this business unit.")
+      const { data, error } = await client.from("project_allocations").insert(a).select().single()
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
+  {
+    name: "update_project_allocation",
+    description: "Update a project allocation.",
+    inputSchema: { type: "object", required: ["allocation_id"], properties: {
+      allocation_id:         { type: "string" },
+      allocation_percentage: { type: "number" },
+      start_date:            { type: "string" },
+      end_date:              { type: "string" },
+      notes:                 { type: "string" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "pm", "pm_projects", "update")) throw new Error("No permission to update project allocations.")
+      const { allocation_id, ...fields } = a
+      const updates = defined(fields)
+      if (!Object.keys(updates).length) throw new Error("No fields provided to update.")
+      const { data, error } = await client.from("project_allocations")
+        .update(updates).eq("id", allocation_id).in("business_unit_id", ctx.businessUnitIds).select().single()
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
+  {
+    name: "delete_project_allocation",
+    description: "Delete a project allocation by ID.",
+    inputSchema: { type: "object", required: ["allocation_id"], properties: {
+      allocation_id: { type: "string" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "pm", "pm_projects", "delete")) throw new Error("No permission to delete project allocations.")
+      const { error } = await client.from("project_allocations")
+        .delete().eq("id", a.allocation_id).in("business_unit_id", ctx.businessUnitIds)
+      if (error) throw new Error(error.message)
+      return { message: `Allocation ${a.allocation_id} deleted.` }
+    },
+  },
+
+  // ── CRM Pipelines ─────────────────────────────────────────────────────────────
+  {
+    name: "list_crm_pipelines",
+    description: "List CRM pipelines.",
+    inputSchema: { type: "object", properties: {
+      limit: { type: "number" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "crm", "leads", "view")) throw new Error("No permission to view CRM pipelines.")
+      const { data, error } = await client.from("crm_pipelines")
+        .select("*")
+        .in("business_unit_id", ctx.businessUnitIds).limit(a.limit || 50)
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
+  {
+    name: "list_pipeline_stages",
+    description: "List stages for a CRM pipeline.",
+    inputSchema: { type: "object", required: ["pipeline_id"], properties: {
+      pipeline_id: { type: "string" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "crm", "leads", "view")) throw new Error("No permission to view pipeline stages.")
+      const { data, error } = await client.from("crm_pipeline_stages")
+        .select("*")
+        .eq("pipeline_id", a.pipeline_id).order("position")
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
+  // ── FIRC ──────────────────────────────────────────────────────────────────────
+  {
+    name: "list_firc",
+    description: "List FIRC (Foreign Inward Remittance Certificates). Filter by date range or client.",
+    inputSchema: { type: "object", properties: {
+      client_id: { type: "string" },
+      from_date: { type: "string", description: "YYYY-MM-DD" },
+      to_date:   { type: "string", description: "YYYY-MM-DD" },
+      limit:     { type: "number" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "finance", "firc", "view")) throw new Error("No permission to view FIRC.")
+      let q = client.from("firc")
+        .select("*")
+        .in("business_unit_id", ctx.businessUnitIds).order("created_at", { ascending: false }).limit(a.limit || 50)
+      if (a.client_id) q = q.eq("client_id", a.client_id)
+      if (a.from_date) q = q.gte("created_at", a.from_date)
+      if (a.to_date)   q = q.lte("created_at", a.to_date)
+      const { data, error } = await q
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
+  {
+    name: "create_firc",
+    description: "Create a new FIRC entry.",
+    inputSchema: { type: "object", required: ["business_unit_id","invoice_id"], properties: {
+      business_unit_id:  { type: "string" },
+      invoice_id:        { type: "string" },
+      client_id:         { type: "string" },
+      firc_number:       { type: "string" },
+      amount_received:   { type: "number" },
+      currency:          { type: "string" },
+      bank_name:         { type: "string" },
+      received_date:     { type: "string", description: "YYYY-MM-DD" },
+      remarks:           { type: "string" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "finance", "firc", "create")) throw new Error("No permission to create FIRC.")
+      if (!ctx.businessUnitIds.includes(a.business_unit_id)) throw new Error("No access to this business unit.")
+      const { data, error } = await client.from("firc").insert({ ...a, created_by: ctx.userId }).select().single()
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
+  {
+    name: "update_firc",
+    description: "Update an existing FIRC entry.",
+    inputSchema: { type: "object", required: ["firc_id"], properties: {
+      firc_id:         { type: "string" },
+      firc_number:     { type: "string" },
+      amount_received: { type: "number" },
+      currency:        { type: "string" },
+      bank_name:       { type: "string" },
+      received_date:   { type: "string" },
+      remarks:         { type: "string" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "finance", "firc", "update")) throw new Error("No permission to update FIRC.")
+      const { firc_id, ...fields } = a
+      const updates = defined(fields)
+      if (!Object.keys(updates).length) throw new Error("No fields provided to update.")
+      const { data, error } = await client.from("firc")
+        .update(updates).eq("id", firc_id).in("business_unit_id", ctx.businessUnitIds).select().single()
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
+  {
+    name: "delete_firc",
+    description: "Delete a FIRC entry by ID.",
+    inputSchema: { type: "object", required: ["firc_id"], properties: {
+      firc_id: { type: "string" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "finance", "firc", "delete")) throw new Error("No permission to delete FIRC.")
+      const { error } = await client.from("firc")
+        .delete().eq("id", a.firc_id).in("business_unit_id", ctx.businessUnitIds)
+      if (error) throw new Error(error.message)
+      return { message: `FIRC ${a.firc_id} deleted.` }
+    },
+  },
+
+  // ── Expense Forecasts ─────────────────────────────────────────────────────────
+  {
+    name: "list_expense_forecasts",
+    description: "List expense forecasts. Filter by category or month range.",
+    inputSchema: { type: "object", properties: {
+      category:   { type: "string" },
+      from_month: { type: "string", description: "YYYY-MM-DD" },
+      to_month:   { type: "string", description: "YYYY-MM-DD" },
+      limit:      { type: "number" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "finance", "expense_forecasts", "view")) throw new Error("No permission to view expense forecasts.")
+      let q = client.from("expense_forecasts")
+        .select("*")
+        .in("business_unit_id", ctx.businessUnitIds).order("forecast_month", { ascending: false }).limit(a.limit || 50)
+      if (a.category)   q = q.eq("category", a.category)
+      if (a.from_month) q = q.gte("forecast_month", a.from_month)
+      if (a.to_month)   q = q.lte("forecast_month", a.to_month)
+      const { data, error } = await q
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
+  {
+    name: "create_expense_forecast",
+    description: "Create a new expense forecast.",
+    inputSchema: { type: "object", required: ["business_unit_id","category","forecast_month"], properties: {
+      business_unit_id: { type: "string" },
+      category:         { type: "string" },
+      forecast_month:   { type: "string", description: "YYYY-MM-DD" },
+      forecast_amount:  { type: "number" },
+      currency:         { type: "string" },
+      description:      { type: "string" },
+      status:           { type: "string" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "finance", "expense_forecasts", "create")) throw new Error("No permission to create expense forecasts.")
+      if (!ctx.businessUnitIds.includes(a.business_unit_id)) throw new Error("No access to this business unit.")
+      const { data, error } = await client.from("expense_forecasts").insert({ ...a, created_by: ctx.userId }).select().single()
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
+  {
+    name: "update_expense_forecast",
+    description: "Update an existing expense forecast.",
+    inputSchema: { type: "object", required: ["forecast_id"], properties: {
+      forecast_id:     { type: "string" },
+      category:        { type: "string" },
+      forecast_month:  { type: "string" },
+      forecast_amount: { type: "number" },
+      currency:        { type: "string" },
+      description:     { type: "string" },
+      status:          { type: "string" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "finance", "expense_forecasts", "update")) throw new Error("No permission to update expense forecasts.")
+      const { forecast_id, ...fields } = a
+      const updates = defined(fields)
+      if (!Object.keys(updates).length) throw new Error("No fields provided to update.")
+      const { data, error } = await client.from("expense_forecasts")
+        .update(updates).eq("id", forecast_id).in("business_unit_id", ctx.businessUnitIds).select().single()
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
+  {
+    name: "delete_expense_forecast",
+    description: "Delete an expense forecast by ID.",
+    inputSchema: { type: "object", required: ["forecast_id"], properties: {
+      forecast_id: { type: "string" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "finance", "expense_forecasts", "delete")) throw new Error("No permission to delete expense forecasts.")
+      const { error } = await client.from("expense_forecasts")
+        .delete().eq("id", a.forecast_id).in("business_unit_id", ctx.businessUnitIds)
+      if (error) throw new Error(error.message)
+      return { message: `Expense forecast ${a.forecast_id} deleted.` }
+    },
+  },
+
+  // ── Actual Expenses ───────────────────────────────────────────────────────────
+  {
+    name: "list_actual_expenses",
+    description: "List actual expenses. Filter by category or date range.",
+    inputSchema: { type: "object", properties: {
+      category:  { type: "string" },
+      from_date: { type: "string", description: "YYYY-MM-DD" },
+      to_date:   { type: "string", description: "YYYY-MM-DD" },
+      limit:     { type: "number" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "finance", "actual_expenses", "view")) throw new Error("No permission to view actual expenses.")
+      let q = client.from("actual_expenses")
+        .select("*")
+        .in("business_unit_id", ctx.businessUnitIds).order("expense_date", { ascending: false }).limit(a.limit || 50)
+      if (a.category)  q = q.eq("category", a.category)
+      if (a.from_date) q = q.gte("expense_date", a.from_date)
+      if (a.to_date)   q = q.lte("expense_date", a.to_date)
+      const { data, error } = await q
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
+  {
+    name: "create_actual_expense",
+    description: "Create a new actual expense record.",
+    inputSchema: { type: "object", required: ["business_unit_id","category","expense_date"], properties: {
+      business_unit_id: { type: "string" },
+      category:         { type: "string" },
+      expense_date:     { type: "string", description: "YYYY-MM-DD" },
+      amount:           { type: "number" },
+      currency:         { type: "string" },
+      vendor:           { type: "string" },
+      description:      { type: "string" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "finance", "actual_expenses", "create")) throw new Error("No permission to create actual expenses.")
+      if (!ctx.businessUnitIds.includes(a.business_unit_id)) throw new Error("No access to this business unit.")
+      const { data, error } = await client.from("actual_expenses").insert({ ...a, created_by: ctx.userId }).select().single()
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
+  {
+    name: "update_actual_expense",
+    description: "Update an existing actual expense.",
+    inputSchema: { type: "object", required: ["expense_id"], properties: {
+      expense_id:   { type: "string" },
+      category:     { type: "string" },
+      expense_date: { type: "string" },
+      amount:       { type: "number" },
+      currency:     { type: "string" },
+      vendor:       { type: "string" },
+      description:  { type: "string" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "finance", "actual_expenses", "update")) throw new Error("No permission to update actual expenses.")
+      const { expense_id, ...fields } = a
+      const updates = defined(fields)
+      if (!Object.keys(updates).length) throw new Error("No fields provided to update.")
+      const { data, error } = await client.from("actual_expenses")
+        .update(updates).eq("id", expense_id).in("business_unit_id", ctx.businessUnitIds).select().single()
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
+  {
+    name: "delete_actual_expense",
+    description: "Delete an actual expense by ID.",
+    inputSchema: { type: "object", required: ["expense_id"], properties: {
+      expense_id: { type: "string" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "finance", "actual_expenses", "delete")) throw new Error("No permission to delete actual expenses.")
+      const { error } = await client.from("actual_expenses")
+        .delete().eq("id", a.expense_id).in("business_unit_id", ctx.businessUnitIds)
+      if (error) throw new Error(error.message)
+      return { message: `Actual expense ${a.expense_id} deleted.` }
+    },
+  },
+
+  // ── Other Income ──────────────────────────────────────────────────────────────
+  {
+    name: "list_other_income",
+    description: "List other income records. Filter by category or date range.",
+    inputSchema: { type: "object", properties: {
+      category:  { type: "string" },
+      from_date: { type: "string", description: "YYYY-MM-DD" },
+      to_date:   { type: "string", description: "YYYY-MM-DD" },
+      limit:     { type: "number" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "finance", "other_income", "view")) throw new Error("No permission to view other income.")
+      let q = client.from("other_income")
+        .select("*")
+        .in("business_unit_id", ctx.businessUnitIds).order("income_date", { ascending: false }).limit(a.limit || 50)
+      if (a.category)  q = q.eq("category", a.category)
+      if (a.from_date) q = q.gte("income_date", a.from_date)
+      if (a.to_date)   q = q.lte("income_date", a.to_date)
+      const { data, error } = await q
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
+  {
+    name: "create_other_income",
+    description: "Create a new other income record.",
+    inputSchema: { type: "object", required: ["business_unit_id","income_date","amount_fc"], properties: {
+      business_unit_id: { type: "string" },
+      income_date:      { type: "string", description: "YYYY-MM-DD" },
+      amount_fc:        { type: "number" },
+      currency:         { type: "string" },
+      exchange_rate:    { type: "number" },
+      category:         { type: "string" },
+      description:      { type: "string" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "finance", "other_income", "create")) throw new Error("No permission to create other income.")
+      if (!ctx.businessUnitIds.includes(a.business_unit_id)) throw new Error("No access to this business unit.")
+      const { data, error } = await client.from("other_income").insert({ ...a, created_by: ctx.userId }).select().single()
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
+  {
+    name: "update_other_income",
+    description: "Update an existing other income record.",
+    inputSchema: { type: "object", required: ["income_id"], properties: {
+      income_id:     { type: "string" },
+      income_date:   { type: "string" },
+      amount_fc:     { type: "number" },
+      currency:      { type: "string" },
+      exchange_rate: { type: "number" },
+      category:      { type: "string" },
+      description:   { type: "string" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "finance", "other_income", "update")) throw new Error("No permission to update other income.")
+      const { income_id, ...fields } = a
+      const updates = defined(fields)
+      if (!Object.keys(updates).length) throw new Error("No fields provided to update.")
+      const { data, error } = await client.from("other_income")
+        .update(updates).eq("id", income_id).in("business_unit_id", ctx.businessUnitIds).select().single()
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
+  {
+    name: "delete_other_income",
+    description: "Delete an other income record by ID.",
+    inputSchema: { type: "object", required: ["income_id"], properties: {
+      income_id: { type: "string" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "finance", "other_income", "delete")) throw new Error("No permission to delete other income.")
+      const { error } = await client.from("other_income")
+        .delete().eq("id", a.income_id).in("business_unit_id", ctx.businessUnitIds)
+      if (error) throw new Error(error.message)
+      return { message: `Other income ${a.income_id} deleted.` }
+    },
+  },
+
+  // ── Finance Transfers ─────────────────────────────────────────────────────────
+  {
+    name: "list_finance_transfers",
+    description: "List finance transfers between accounts. Filter by date range.",
+    inputSchema: { type: "object", properties: {
+      from_date: { type: "string", description: "YYYY-MM-DD" },
+      to_date:   { type: "string", description: "YYYY-MM-DD" },
+      limit:     { type: "number" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "finance", "finance_transfers", "view")) throw new Error("No permission to view finance transfers.")
+      let q = client.from("finance_transfers")
+        .select("*")
+        .in("business_unit_id", ctx.businessUnitIds).order("transfer_date", { ascending: false }).limit(a.limit || 50)
+      if (a.from_date) q = q.gte("transfer_date", a.from_date)
+      if (a.to_date)   q = q.lte("transfer_date", a.to_date)
+      const { data, error } = await q
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
+  {
+    name: "create_finance_transfer",
+    description: "Create a transfer between two finance accounts.",
+    inputSchema: { type: "object", required: ["business_unit_id","from_account_id","to_account_id","amount","transfer_date"], properties: {
+      business_unit_id: { type: "string" },
+      from_account_id:  { type: "string" },
+      to_account_id:    { type: "string" },
+      amount:           { type: "number" },
+      transfer_date:    { type: "string", description: "YYYY-MM-DD" },
+      notes:            { type: "string" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "finance", "finance_transfers", "create")) throw new Error("No permission to create finance transfers.")
+      if (!ctx.businessUnitIds.includes(a.business_unit_id)) throw new Error("No access to this business unit.")
+      const { data, error } = await client.from("finance_transfers").insert({ ...a, created_by: ctx.userId }).select().single()
+      if (error) throw new Error(error.message)
+      return data
+    },
+  },
+
+  {
+    name: "delete_finance_transfer",
+    description: "Delete a finance transfer by ID.",
+    inputSchema: { type: "object", required: ["transfer_id"], properties: {
+      transfer_id: { type: "string" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "finance", "finance_transfers", "delete")) throw new Error("No permission to delete finance transfers.")
+      const { error } = await client.from("finance_transfers")
+        .delete().eq("id", a.transfer_id).in("business_unit_id", ctx.businessUnitIds)
+      if (error) throw new Error(error.message)
+      return { message: `Finance transfer ${a.transfer_id} deleted.` }
+    },
+  },
+
+  // ── Daily Summaries ───────────────────────────────────────────────────────────
+  {
+    name: "list_daily_summaries",
+    description: "List daily financial summaries. Filter by date range.",
+    inputSchema: { type: "object", properties: {
+      from_date: { type: "string", description: "YYYY-MM-DD" },
+      to_date:   { type: "string", description: "YYYY-MM-DD" },
+      limit:     { type: "number" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "finance", "daily_summary", "view")) throw new Error("No permission to view daily summaries.")
+      let q = client.from("daily_summaries")
+        .select("*")
+        .in("business_unit_id", ctx.businessUnitIds).order("date", { ascending: false }).limit(a.limit || 50)
+      if (a.from_date) q = q.gte("date", a.from_date)
+      if (a.to_date)   q = q.lte("date", a.to_date)
+      const { data, error } = await q
       if (error) throw new Error(error.message)
       return data
     },
