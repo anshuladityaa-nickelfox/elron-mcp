@@ -1,0 +1,6 @@
+.claude/
+node_modules/
+*.env
+.env*
+supabase/.temp/
+elron/
