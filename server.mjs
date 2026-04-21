@@ -716,14 +716,23 @@ const tools = [
       const { client, ctx } = requireAuth()
       if (!can(ctx, "crm", "leads", "view")) throw new Error("No permission to view leads.")
       let q = client.from("leads")
-        .select("*")
+        .select("*, lead_custom_field_values(field_id, value_text, value_number, value_date, value_boolean, pipeline_custom_fields(name, field_type))")
         .in("business_unit_id", ctx.businessUnitIds).order("created_at", { ascending: false }).limit(a.limit || 50)
       if (a.stage)    q = q.eq("stage", a.stage)
       if (a.priority) q = q.eq("priority", a.priority)
       if (a.search)   q = q.or(`company_name.ilike.%${a.search}%,contact_name.ilike.%${a.search}%,contact_email.ilike.%${a.search}%`)
       const { data, error } = await q
       if (error) throw new Error(error.message)
-      return data
+      return data.map(lead => {
+        const custom_fields = {}
+        for (const v of lead.lead_custom_field_values || []) {
+          const name = v.pipeline_custom_fields?.name
+          if (!name) continue
+          custom_fields[name] = v.value_text ?? v.value_number ?? v.value_date ?? v.value_boolean ?? null
+        }
+        const { lead_custom_field_values, ...rest } = lead
+        return { ...rest, custom_fields }
+      })
     },
   },
 
