@@ -11,8 +11,8 @@ import { join } from "path"
 import { homedir } from "os"
 import { createInterface } from "readline"
 
-const SUPABASE_URL  = "https://xwtlxsrexibxsldaaugi.supabase.co"
-const SUPABASE_ANON = "sb_publishable_wGmyrKz2qD3VOl5UW7yP2A_r3TbvYrL"
+const SUPABASE_URL  = "https://vqbawakmcbnotxfltrws.supabase.co"
+const SUPABASE_ANON = "sb_publishable_FfAQQJezc2qaWAixOvtzvQ_ld3vU-7m"
 
 const SESSION_DIR  = join(homedir(), ".elron-mcp")
 const SESSION_FILE = join(SESSION_DIR, "session.json")
@@ -1027,7 +1027,7 @@ const tools = [
     }},
     handler: async (a) => {
       const { client, ctx } = requireAuth()
-      if (!can(ctx, "pm", "pm_projects", "view")) throw new Error("No permission to view projects.")
+      if (!can(ctx, "pm", "pm_projects", "view") && !can(ctx, "clients", "projects", "view")) throw new Error("No permission to view projects.")
       let q = client.from("projects")
         .select("*, clients(client_name)")
         .in("business_unit_id", ctx.businessUnitIds).limit(a.limit || 50)
@@ -1052,7 +1052,7 @@ const tools = [
     }},
     handler: async (a) => {
       const { client, ctx } = requireAuth()
-      if (!can(ctx, "pm", "pm_projects", "create")) throw new Error("No permission to create projects.")
+      if (!can(ctx, "pm", "pm_projects", "create") && !can(ctx, "clients", "projects", "create")) throw new Error("No permission to create projects.")
       if (!ctx.businessUnitIds.includes(a.business_unit_id)) throw new Error("No access to this business unit.")
       const { data, error } = await client.from("projects").insert({ ...a, created_by: ctx.userId }).select().single()
       if (error) throw new Error(error.message)
@@ -1072,7 +1072,7 @@ const tools = [
     }},
     handler: async (a) => {
       const { client, ctx } = requireAuth()
-      if (!can(ctx, "pm", "pm_projects", "update")) throw new Error("No permission to update projects.")
+      if (!can(ctx, "pm", "pm_projects", "update") && !can(ctx, "clients", "projects", "update")) throw new Error("No permission to update projects.")
       const { project_id, ...fields } = a
       const updates = defined(fields)
       if (!Object.keys(updates).length) throw new Error("No fields provided to update.")
@@ -1091,7 +1091,7 @@ const tools = [
     }},
     handler: async (a) => {
       const { client, ctx } = requireAuth()
-      if (!can(ctx, "pm", "pm_projects", "delete")) throw new Error("No permission to delete projects.")
+      if (!can(ctx, "pm", "pm_projects", "delete") && !can(ctx, "clients", "projects", "delete")) throw new Error("No permission to delete projects.")
       const { error } = await client.from("projects")
         .delete().eq("id", a.project_id).in("business_unit_id", ctx.businessUnitIds)
       if (error) throw new Error(error.message)
@@ -1110,7 +1110,7 @@ const tools = [
     }},
     handler: async (a) => {
       const { client, ctx } = requireAuth()
-      if (!can(ctx, "hr", "hr_team_members", "view")) throw new Error("No permission to view team members.")
+      if (!can(ctx, "hr", "hr_team_members", "view") && !can(ctx, "pm", "pm_team_members", "view")) throw new Error("No permission to view team members.")
       let q = client.from("team_members")
         .select("*, designations(title), teams(name)")
         .in("business_unit_id", ctx.businessUnitIds).eq("is_archived", false).limit(a.limit || 100)
@@ -1138,7 +1138,7 @@ const tools = [
     }},
     handler: async (a) => {
       const { client, ctx } = requireAuth()
-      if (!can(ctx, "hr", "hr_team_members", "create")) throw new Error("No permission to create team members.")
+      if (!can(ctx, "hr", "hr_team_members", "create") && !can(ctx, "pm", "pm_team_members", "create")) throw new Error("No permission to create team members.")
       if (!ctx.businessUnitIds.includes(a.business_unit_id)) throw new Error("No access to this business unit.")
       const { data, error } = await client.from("team_members").insert({ ...a, created_by: ctx.userId }).select().single()
       if (error) throw new Error(error.message)
@@ -1163,7 +1163,7 @@ const tools = [
     }},
     handler: async (a) => {
       const { client, ctx } = requireAuth()
-      if (!can(ctx, "hr", "hr_team_members", "update")) throw new Error("No permission to update team members.")
+      if (!can(ctx, "hr", "hr_team_members", "update") && !can(ctx, "pm", "pm_team_members", "update")) throw new Error("No permission to update team members.")
       const { member_id, ...fields } = a
       const updates = defined(fields)
       if (!Object.keys(updates).length) throw new Error("No fields provided to update.")
@@ -1182,7 +1182,7 @@ const tools = [
     }},
     handler: async (a) => {
       const { client, ctx } = requireAuth()
-      if (!can(ctx, "hr", "hr_team_members", "delete")) throw new Error("No permission to delete team members.")
+      if (!can(ctx, "hr", "hr_team_members", "delete") && !can(ctx, "pm", "pm_team_members", "delete")) throw new Error("No permission to delete team members.")
       const { error } = await client.from("team_members")
         .update({ is_archived: true }).eq("id", a.member_id).in("business_unit_id", ctx.businessUnitIds)
       if (error) throw new Error(error.message)
@@ -2209,6 +2209,68 @@ const tools = [
       const { data, error } = await q
       if (error) throw new Error(error.message)
       return data
+    },
+  },
+
+  // ── PM Reports ────────────────────────────────────────────────────────────────
+  {
+    name: "get_pm_report",
+    description: "PM report: projects summary with timesheet hours and team allocation per project.",
+    inputSchema: { type: "object", properties: {
+      project_id: { type: "string", description: "Filter to a specific project" },
+      from_date:  { type: "string", description: "YYYY-MM-DD" },
+      to_date:    { type: "string", description: "YYYY-MM-DD" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "pm", "pm_reports", "view")) throw new Error("No permission to view PM reports.")
+      let pq = client.from("projects")
+        .select("id, project_name, status, engagement_type, clients(client_name)")
+        .in("business_unit_id", ctx.businessUnitIds)
+      if (a.project_id) pq = pq.eq("id", a.project_id)
+      const { data: projects, error: pe } = await pq
+      if (pe) throw new Error(pe.message)
+
+      let tq = client.from("timesheet_entries")
+        .select("project_id, hours")
+        .in("business_unit_id", ctx.businessUnitIds)
+      if (a.project_id) tq = tq.eq("project_id", a.project_id)
+      if (a.from_date)  tq = tq.gte("date", a.from_date)
+      if (a.to_date)    tq = tq.lte("date", a.to_date)
+      const { data: entries, error: te } = await tq
+      if (te) throw new Error(te.message)
+
+      const hoursMap = {}
+      for (const e of entries || []) {
+        hoursMap[e.project_id] = (hoursMap[e.project_id] || 0) + (e.hours || 0)
+      }
+      return projects.map(p => ({ ...p, total_hours_logged: hoursMap[p.id] || 0 }))
+    },
+  },
+
+  // ── HR Reports ────────────────────────────────────────────────────────────────
+  {
+    name: "get_hr_report",
+    description: "HR report: team members summary with team and designation breakdown.",
+    inputSchema: { type: "object", properties: {
+      team_id: { type: "string", description: "Filter to a specific team" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "hr", "hr_reports", "view")) throw new Error("No permission to view HR reports.")
+      let q = client.from("team_members")
+        .select("*, designations(title), teams(name)")
+        .in("business_unit_id", ctx.businessUnitIds).eq("is_archived", false)
+      if (a.team_id) q = q.eq("team_id", a.team_id)
+      const { data, error } = await q
+      if (error) throw new Error(error.message)
+      const byTeam = {}
+      for (const m of data || []) {
+        const teamName = m.teams?.name || "Unassigned"
+        if (!byTeam[teamName]) byTeam[teamName] = []
+        byTeam[teamName].push({ name: m.name, email: m.email, designation: m.designations?.title || null, date_of_joining: m.date_of_joining })
+      }
+      return { total_members: data.length, by_team: byTeam }
     },
   },
 ]
