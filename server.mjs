@@ -740,13 +740,13 @@ const tools = [
   // ── CRM Leads ─────────────────────────────────────────────────────────────────
   {
     name: "list_leads",
-    description: "List CRM leads. Filter by stage, priority, date range, or search by company/contact name.",
+    description: "List CRM leads. Filter by stage, priority, date range, or search by company/contact name. IMPORTANT: For any query involving a specific date or date range (e.g. 'leads from yesterday', 'leads added on April 14', 'leads this week'), you MUST pass from_date and to_date parameters — never fetch all leads and filter manually.",
     inputSchema: { type: "object", properties: {
       stage:     { type: "string" },
       priority:  { type: "string" },
       search:    { type: "string" },
-      from_date: { type: "string", description: "Filter leads created on or after this date (YYYY-MM-DD)" },
-      to_date:   { type: "string", description: "Filter leads created on or before this date (YYYY-MM-DD)" },
+      from_date: { type: "string", description: "YYYY-MM-DD — use this for any date-specific query, do not filter dates from results manually" },
+      to_date:   { type: "string", description: "YYYY-MM-DD — use this for any date-specific query, do not filter dates from results manually" },
       limit:     { type: "number" },
     }},
     handler: async (a) => {
