@@ -11,8 +11,8 @@ import { join } from "path"
 import { homedir } from "os"
 import { createInterface } from "readline"
 
-const SUPABASE_URL  = "https://vqbawakmcbnotxfltrws.supabase.co"
-const SUPABASE_ANON = "sb_publishable_FfAQQJezc2qaWAixOvtzvQ_ld3vU-7m"
+const SUPABASE_URL  = "https://xwtlxsrexibxsldaaugi.supabase.co"
+const SUPABASE_ANON = "sb_publishable_wGmyrKz2qD3VOl5UW7yP2A_r3TbvYrL"
 
 const SESSION_DIR  = join(homedir(), ".elron-mcp")
 const SESSION_FILE = join(SESSION_DIR, "session.json")
