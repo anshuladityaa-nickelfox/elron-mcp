@@ -11,8 +11,8 @@ import { join } from "path"
 import { homedir } from "os"
 import { createInterface } from "readline"
 
-const SUPABASE_URL  = "https://xwtlxsrexibxsldaaugi.supabase.co"
-const SUPABASE_ANON = "sb_publishable_wGmyrKz2qD3VOl5UW7yP2A_r3TbvYrL"
+const SUPABASE_URL  = "https://vqbawakmcbnotxfltrws.supabase.co"
+const SUPABASE_ANON = "sb_publishable_FfAQQJezc2qaWAixOvtzvQ_ld3vU-7m"
 
 const SESSION_DIR  = join(homedir(), ".elron-mcp")
 const SESSION_FILE = join(SESSION_DIR, "session.json")
@@ -740,21 +740,21 @@ const tools = [
   // ── CRM Leads ─────────────────────────────────────────────────────────────────
   {
     name: "list_leads",
-    description: "List CRM leads. Filter by stage, priority, date range, or search by company/contact name. IMPORTANT: For any query involving a specific date or date range (e.g. 'leads from yesterday', 'leads added on April 14', 'leads this week'), you MUST pass from_date and to_date parameters — never fetch all leads and filter manually.",
+    description: "List CRM leads. Returns core lead data only (no custom fields). For custom fields (LinkedIn, City, etc.) use get_lead_details. IMPORTANT: For any date-specific query (e.g. 'leads from April 14', 'leads added yesterday'), always pass from_date and to_date — never filter dates from the results manually.",
     inputSchema: { type: "object", properties: {
       stage:     { type: "string" },
       priority:  { type: "string" },
       search:    { type: "string" },
-      from_date: { type: "string", description: "YYYY-MM-DD — use this for any date-specific query, do not filter dates from results manually" },
-      to_date:   { type: "string", description: "YYYY-MM-DD — use this for any date-specific query, do not filter dates from results manually" },
+      from_date: { type: "string", description: "YYYY-MM-DD" },
+      to_date:   { type: "string", description: "YYYY-MM-DD" },
       limit:     { type: "number" },
     }},
     handler: async (a) => {
       const { client, ctx } = requireAuth()
       if (!can(ctx, "crm", "leads", "view")) throw new Error("No permission to view leads.")
       let q = client.from("leads")
-        .select("*, lead_custom_field_values(field_id, value_text, value_number, value_date, value_boolean, pipeline_custom_fields(name, field_type))")
-        .in("business_unit_id", ctx.businessUnitIds).order("created_at", { ascending: false }).limit(a.limit || 500)
+        .select("*")
+        .in("business_unit_id", ctx.businessUnitIds).order("created_at", { ascending: false }).limit(a.from_date || a.to_date ? 10000 : a.limit || 500)
       if (a.stage)     q = q.eq("stage", a.stage)
       if (a.priority)  q = q.eq("priority", a.priority)
       if (a.from_date) q = q.gte("created_at", a.from_date + "T00:00:00.000+05:30")
@@ -762,16 +762,31 @@ const tools = [
       if (a.search)    q = q.or(`company_name.ilike.%${a.search}%,contact_name.ilike.%${a.search}%,contact_email.ilike.%${a.search}%`)
       const { data, error } = await q
       if (error) throw new Error(error.message)
-      return data.map(lead => {
-        const custom_fields = {}
-        for (const v of lead.lead_custom_field_values || []) {
-          const name = v.pipeline_custom_fields?.name
-          if (!name) continue
-          custom_fields[name] = v.value_text ?? v.value_number ?? v.value_date ?? v.value_boolean ?? null
-        }
-        const { lead_custom_field_values, ...rest } = lead
-        return { ...rest, custom_fields }
-      })
+      return data
+    },
+  },
+
+  {
+    name: "get_lead_details",
+    description: "Get full details of a single lead including all custom fields (LinkedIn, City, Dribbble, Website, etc.).",
+    inputSchema: { type: "object", required: ["lead_id"], properties: {
+      lead_id: { type: "string" },
+    }},
+    handler: async (a) => {
+      const { client, ctx } = requireAuth()
+      if (!can(ctx, "crm", "leads", "view")) throw new Error("No permission to view leads.")
+      const { data, error } = await client.from("leads")
+        .select("*, lead_custom_field_values(field_id, value_text, value_number, value_date, value_boolean, pipeline_custom_fields(name, field_type))")
+        .eq("id", a.lead_id).in("business_unit_id", ctx.businessUnitIds).single()
+      if (error) throw new Error(error.message)
+      const custom_fields = {}
+      for (const v of data.lead_custom_field_values || []) {
+        const name = v.pipeline_custom_fields?.name
+        if (!name) continue
+        custom_fields[name] = v.value_text ?? v.value_number ?? v.value_date ?? v.value_boolean ?? null
+      }
+      const { lead_custom_field_values, ...rest } = data
+      return { ...rest, custom_fields }
     },
   },
 
